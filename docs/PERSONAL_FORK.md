@@ -65,4 +65,4 @@ xcodebuild -project app/Madeira.xcodeproj -scheme Madeira \
 
 `build/dxmt-ios/build.sh`는 Xcode 27에서 Metal 셰이더를 빌드하기 위해 생성 입력에 호환 수정을 적용한다. DXMT 소스 서브모듈은 수정하지 않는다. 이 스크립트로 `libdxmt_unix.a`를 만든 뒤 [`build/dxmt-ios/README.md`](../build/dxmt-ios/README.md)의 `libtool` 명령으로 `libdxmt_combined.a`를 생성해야 한다.
 
-FEX의 iOS 호스트 정적 라이브러리는 이 Mac에서 빌드됐다. ARM64EC `xtajit64.dll` 재빌드는 현재 llvm-mingw의 C++ 런타임 심볼 링크 오류로 완료되지 않았다. 앱 프로젝트에는 기존에 보관된 DLL이 있으므로 이 DLL의 재빌드 문제는 별도 작업이다.
+FEX의 iOS 호스트 정적 라이브러리와 ARM64EC `xtajit64.dll` 모두 이 Mac에서 빌드됐다. 현재 llvm-mingw에서는 ARM64EC Thin LTO와 C++ 런타임 링크가 함께 실패해 `build/fex-arm64ec/build.sh`에서 LTO를 껐다. 스크립트를 실행하면 앱에 보관된 DLL이 교체되므로, 기기에서 확인한 뒤 바이너리 변경을 커밋한다.
