@@ -236,6 +236,8 @@ final class SteamOwnedLibrary: ObservableObject {
     }
     private static var cacheURL: URL { supportFolder.appendingPathComponent("steam-library.json") }
     private static var playtimeURL: URL { supportFolder.appendingPathComponent("steam-playtime.json") }
+    // Version 3 refreshes lists that excluded games with non-English-only depots.
+    private static let cacheVersion = 3
     private struct Cache: Codable { var version: Int; var updated: Date; var account: String; var games: [SteamOwnedGame] }
 
     // MARK: Lifecycle
@@ -284,7 +286,7 @@ final class SteamOwnedLibrary: ObservableObject {
         let account = Self.accountKey(SteamSignIn.accountName)
         cachedAccount = account
         if let data = try? Data(contentsOf: Self.cacheURL), data.count <= 64 << 20,
-           let cache = try? JSONDecoder().decode(Cache.self, from: data), cache.version == 2, cache.account == account {
+           let cache = try? JSONDecoder().decode(Cache.self, from: data), cache.version == Self.cacheVersion, cache.account == account {
             owned = cache.games; libraryUpdated = cache.updated
         }
         if !owned.isEmpty, let data = try? Data(contentsOf: Self.playtimeURL), data.count <= 16 << 20,
@@ -326,7 +328,7 @@ final class SteamOwnedLibrary: ObservableObject {
     private func writeCache() {
         guard let account = cachedAccount, let updated = libraryUpdated else { return }
         try? FileManager.default.createDirectory(at: Self.supportFolder, withIntermediateDirectories: true)
-        try? JSONEncoder().encode(Cache(version: 2, updated: updated, account: account, games: owned))
+        try? JSONEncoder().encode(Cache(version: Self.cacheVersion, updated: updated, account: account, games: owned))
             .write(to: Self.cacheURL, options: .atomic)
     }
 

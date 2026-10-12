@@ -800,6 +800,14 @@ func packageBuffer(apps: [UInt32], depots: [UInt32]) -> Data {
     "depots" { "201" { "config" { "oslist" "windows" "osarch" "32" } "manifests" { "public" "2001" } } "202" { "manifests" { "public" "2002" } } }
     """#))!
     require(legacy.installDepots().map(\.depotID) == [201, 202], "32-bit-only apps fall back to 32-bit depots")
+    let localized = SteamAppInfo.parse(appID: 10, from: appVDF(#"""
+    "common" { "name" "Localized" "type" "Game" "oslist" "windows" }
+    "depots" { "203" { "config" { "oslist" "windows" "osarch" "64" "language" "japanese" }
+                        "manifests" { "public" { "gid" "2003" "download" "5" } } } }
+    """#))!
+    require(localized.installableOnWindows && localized.installDepots().map(\.depotID) == [203],
+            "a Windows game with only one non-English depot remains installable")
+    require(localized.downloadSize(for: "windows") == 5, "the localized fallback is included in download size")
     let mac = SteamAppInfo.parse(appID: 10, from: appVDF(#""common" { "name" "Mac" "type" "Game" "oslist" "macos" } "depots" { "301" { "config" { "oslist" "macos" } "manifests" { "public" "3001" } } }"#))!
     require(!mac.installableOnWindows, "apps without a Windows build are not offered")
     let tool = SteamAppInfo.parse(appID: 10, from: appVDF(#""common" { "name" "Tool" "type" "Tool" } "depots" { "401" { "manifests" { "public" "4001" } } }"#))!

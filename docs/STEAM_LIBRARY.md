@@ -131,7 +131,8 @@ opens again when needed.
 account that owns the depot, so ownership is Steam's decision, not Madeira's.
 
 1. Product info of the app (and of the apps whose depots it shares) selects the
-   Windows, English, 64-bit (else 32-bit) depots, without DLC, redistributables
+   Windows, English, 64-bit (else 32-bit) depots, or one available language if
+   there is no English depot, without DLC, redistributables
    or regional alternates.
 2. For each depot: the depot key, the manifest request code, a per-server
    authorization token, then the manifest from a content server (a single-entry
@@ -413,7 +414,8 @@ Madeira Dock or as The game).
 ## Not included, and limits
 
 - No Steam Cloud, no achievements, no workshop content, no DLC installation,
-  no branch (beta) selection, no language selection: English, the public
+  no branch (beta) selection, no language picker: English when available,
+  otherwise one available language; the public
   branch.
 - A file that a newer build no longer contains is not deleted by an update
   (the install keeps it); **Uninstall** removes the whole folder.

@@ -159,12 +159,22 @@ struct SteamAppInfo {
     /// to 32-bit depots when the app only publishes those.
     func installDepots(os: String = "windows", arch: String = "64",
                        language: String = "english") -> [DepotInfo] {
+        // Some games publish only a localized depot (for example, no common
+        // content and no English depot). In that case choose one available
+        // language rather than treating the game as unavailable on Windows.
+        // Keep the requested language whenever Steam actually provides it.
+        let availableLanguages = Set(depots.filter { d in
+            d.supports(os: os) && d.dlcAppID == nil && !d.isSharedInstall &&
+            d.publicManifestID != nil && !d.lowViolence
+        }.map { $0.language.lowercased() }.filter { !$0.isEmpty })
+        let selectedLanguage = availableLanguages.contains(language.lowercased())
+            ? language.lowercased() : availableLanguages.sorted().first
         func select(_ arch: String) -> [DepotInfo] {
             depots.filter { d in
                 d.supports(os: os) && d.dlcAppID == nil && !d.isSharedInstall &&
                 d.publicManifestID != nil && !d.lowViolence &&
                 (d.osarch.isEmpty || d.osarch == arch) &&
-                (d.language.isEmpty || d.language.caseInsensitiveCompare(language) == .orderedSame)
+                (d.language.isEmpty || d.language.lowercased() == selectedLanguage)
             }.sorted { $0.depotID < $1.depotID }
         }
         let preferred = select(arch)
