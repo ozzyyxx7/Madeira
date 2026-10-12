@@ -896,6 +896,21 @@ struct SteamGameSheet: View {
                         }
                     }
                     Section {
+                        let progress = steam.downloads[appID]?.progress
+                        if let bytes = progress?.installBytes, bytes > 0 {
+                            LabeledContent("Game size", value: formatBytes(Int64(clamping: bytes)))
+                        } else if let bytes = item.owned?.installSizeEstimate {
+                            LabeledContent("Game size", value: "About \(formatBytes(Int64(clamping: bytes)))")
+                        } else {
+                            LabeledContent("Game size", value: "Available when download starts")
+                        }
+                        if let bytes = progress?.totalBytes, bytes > 0 {
+                            LabeledContent("Download size", value: formatBytes(Int64(clamping: bytes)))
+                        } else if let bytes = item.owned?.downloadSizeEstimate {
+                            LabeledContent("Download size", value: "About \(formatBytes(Int64(clamping: bytes)))")
+                        } else {
+                            LabeledContent("Download size", value: "Available when download starts")
+                        }
                         if let freeSpace { LabeledContent("Free space on this device", value: formatBytes(freeSpace)) }
                         Text(SteamGameSheet.downloadNote)
                             .font(.footnote).foregroundStyle(.secondary)

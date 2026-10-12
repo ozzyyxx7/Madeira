@@ -100,8 +100,13 @@ modify them. **Uninstall** also removes the game's library entry.
 **A game that is not installed** opens its download sheet: artwork, playtime,
 **Install** (or **Resume download**), **Pause**, **Resume**, **Try again**,
 progress, speed and time left, **Cancel download** (a first-time install's
-partial files are deleted; an update is only stopped), the free space on the
-device and a link to the game's Steam Store page. When the download finishes,
+partial files are deleted; an update is only stopped), the game's installed
+size, its compressed download size, the free space on the device and a link to
+the game's Steam Store page. Before a download starts, the two sizes are
+estimates from Steam's selected Windows depots. If any selected depot has no
+published size, the sheet says its size becomes available when the download
+starts. Once the depot manifests are prepared, both values use their actual
+file and chunk totals. When the download finishes,
 the game becomes a library entry and the sheet's button reads **Open**, which
 opens its Game details page.
 
@@ -118,7 +123,8 @@ licenses name packages, the packages name apps, and Steam's product-info
 service (PICS) describes each app. Only playable types (games, demos,
 applications) with a Windows depot are kept. The list is cached in
 Application Support (`steam-library.json`, with a hash of the account name it belongs
-to; removed at sign-out) and refreshed when it is older than six hours. Steam's
+to; removed at sign-out) and refreshed when it is older than six hours. An older
+cache stays visible while it refreshes once to add the size estimates. Steam's
 own playtime record for the account comes from `Player.GetOwnedGames` over the
 same connection (`steam-playtime.json`).
 

@@ -792,6 +792,23 @@ func packageBuffer(apps: [UInt32], depots: [UInt32]) -> Data {
     require(info.type == .game, "PICS type names match without case")
     require(info.installDepots().map(\.depotID) == [101, 102, 105], "install depots: common, English, 64-bit only")
     require(info.downloadSize(for: "windows") == 420, "the download size counts only the selected depots")
+    require(info.installSizeEstimate(for: "windows") == nil && info.downloadSizeEstimate(for: "windows") == nil,
+            "a missing selected-depot size does not show a partial game or download estimate")
+    var measured = info
+    for index in measured.depots.indices where [102, 105].contains(measured.depots[index].depotID) {
+        measured.depots[index].publicSizeBytes = 100
+    }
+    require(measured.installSizeEstimate(for: "windows") == 700 && measured.downloadSizeEstimate(for: "windows") == 420,
+            "complete Windows depot metadata gives separate installed and compressed sizes")
+    let measuredOwned = SteamOwnedGame(measured)
+    require(measuredOwned.installSizeEstimate == 700 && measuredOwned.downloadSizeEstimate == 420,
+            "the owned library carries sizes into the download sheet")
+    var oldCache = try JSONSerialization.jsonObject(with: JSONEncoder().encode(measuredOwned)) as! [String: Any]
+    oldCache.removeValue(forKey: "installSizeEstimate")
+    oldCache.removeValue(forKey: "downloadSizeEstimate")
+    let previousOwned = try JSONDecoder().decode(SteamOwnedGame.self, from: JSONSerialization.data(withJSONObject: oldCache))
+    require(previousOwned.installSizeEstimate == nil && previousOwned.downloadSizeEstimate == nil,
+            "old owned-game cache entries still decode without sizes")
     require(info.buildID == 4242 && info.installableOnWindows && info.installDir == "Fixture Game", "build id, install folder and Windows installability")
     require(info.libraryCapsule == "cap/1.jpg" && info.parentID == nil, "artwork name; a parent equal to itself is not kept")
     require(info.depotSelectionSummary().contains("103[-]lang") && info.depotSelectionSummary().contains("107[-]dlc"), "the selection log names the rule that left a depot out")
@@ -825,6 +842,8 @@ func packageBuffer(apps: [UInt32], depots: [UInt32]) -> Data {
     var sharing = SteamAppInfo.parse(appID: 7200, from: appVDF(#""common" { "name" "User" "type" "Game" "oslist" "windows" } "depots" { "7109" { "depotfromapp" "7100" } "7201" { "manifests" { "public" "71" } } }"#))!
     require(sharing.depots.first { $0.depotID == 7109 }?.fromApp == 7100 && sharing.installDepots().map(\.depotID) == [7201], "a depot from another app has no manifest of its own")
     require(sharing.inheritDepots(from: owners) == 1 && sharing.installDepots().map(\.depotID) == [7109, 7201], "it inherits the owner's manifest")
+    require(sharing.installSizeEstimate(for: "windows") == nil && sharing.downloadSizeEstimate(for: "windows") == nil,
+            "unknown shared-depot sizes are not omitted from a displayed total")
 
     // ---- decrypt and decompress the known vectors
     let key = hexData(fx["key"] as! String)
@@ -952,6 +971,7 @@ func packageBuffer(apps: [UInt32], depots: [UInt32]) -> Data {
     print("RESULT listed=\(found.filter { $0.id == 9000 && $0.installed }.count)")
     if phase != "interrupt" && phase != "refused-licensed" {
         require(lastProgress.phase == .finishing && lastProgress.doneBytes == lastProgress.totalBytes && lastProgress.totalBytes > 0, "progress ends complete: \(lastProgress.doneBytes)/\(lastProgress.totalBytes)")
+        require(lastProgress.installBytes > 0, "progress publishes the manifest's installed game size")
         // Keys are asked for with the app being installed; manifest codes and tokens with the app that owns the content.
         require(session.keyRequests.contains { $0.depot == 9001 && $0.app == 9000 } && session.keyRequests.contains { $0.depot == 9003 && $0.app == 9000 }, "depot keys are requested for the installed app")
         require(session.codeRequests.contains { $0.depot == 9003 && $0.app == 9100 } && session.codeRequests.contains { $0.depot == 9001 && $0.app == 9000 }, "manifest codes are requested for the app that owns the depot")

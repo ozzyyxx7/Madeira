@@ -230,6 +230,42 @@ struct SteamAppInfo {
         }
     }
 
+    /// PICS estimates for the selected install. A missing depot size makes the
+    /// whole estimate unavailable rather than showing a misleading partial
+    /// total. Shared depots without inherited manifests are resolved when the
+    /// download starts, so their sizes cannot be counted in the library list.
+    func installSizeEstimate(for os: String) -> UInt64? {
+        completeSizeEstimate(for: os) { d in
+            d.publicSizeBytes > 0 ? d.publicSizeBytes : d.maxSize
+        }
+    }
+
+    func downloadSizeEstimate(for os: String) -> UInt64? {
+        // maxsize is an on-disk size, never a compressed download size.
+        completeSizeEstimate(for: os) { $0.publicDownloadBytes }
+    }
+
+    private func completeSizeEstimate(for os: String, bytes: (DepotInfo) -> UInt64) -> UInt64? {
+        let selected = installDepots(os: os)
+        guard !selected.isEmpty else { return nil }
+        let selectedLanguages = Set(selected.map { $0.language.lowercased() })
+        if depots.contains(where: { d in
+            d.fromApp != nil && d.publicManifestID == nil && d.supports(os: os) &&
+            d.dlcAppID == nil && !d.isSharedInstall && !d.lowViolence &&
+            (d.language.isEmpty || selectedLanguages.contains(d.language.lowercased())) &&
+            (d.osarch.isEmpty || d.osarch == "64" || selected.contains(where: { $0.osarch == "32" }))
+        }) { return nil }
+        var total: UInt64 = 0
+        for depot in selected {
+            let size = bytes(depot)
+            guard size > 0 else { return nil }
+            let (sum, overflow) = total.addingReportingOverflow(size)
+            guard !overflow, sum <= UInt64(Int64.max) else { return nil }
+            total = sum
+        }
+        return total
+    }
+
     // MARK: - Parsing
 
     /// Parse app info from a PICS text-VDF buffer.

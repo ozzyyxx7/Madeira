@@ -16,6 +16,8 @@ struct SteamDownloadProgress: Equatable, Sendable {
     var phase: Phase = .preparing
     /// Compressed bytes to fetch for the whole install (all selected depots).
     var totalBytes: UInt64 = 0
+    /// Installed file bytes from the selected depot manifests, once prepared.
+    var installBytes: UInt64 = 0
     /// Compressed bytes already on disk, including chunks resumed from a
     /// previous attempt.
     var doneBytes: UInt64 = 0
@@ -150,6 +152,7 @@ final class DepotDownloader {
             try Self.prepare(plans: plans, installURL: installURL, journalDir: journalDir)
         }.value
         state.totalBytes = prepared.totalBytes
+        state.installBytes = prepared.totalUncompressed
         state.doneBytes = prepared.doneBytes
         state.phase = .downloading
         report(state)

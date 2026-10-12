@@ -36,6 +36,10 @@ struct SteamOwnedGame: Codable, Identifiable, Hashable, Sendable {
     var libraryHero: String?
     var headerImage: String?
     var parentID: Int?
+    /// Steam's approximate Windows depot sizes; nil when any selected depot
+    /// has no published size or still needs a shared owner's metadata.
+    var installSizeEstimate: UInt64?
+    var downloadSizeEstimate: UInt64?
     /// Steam's launch configuration, for "Start with: The game" (SteamDirectStart);
     /// nil in older caches, which then ask Steam once (SteamOwnedLibrary.launchOptions).
     var launches: [SteamLaunchOption]?
@@ -47,6 +51,8 @@ struct SteamOwnedGame: Codable, Identifiable, Hashable, Sendable {
         buildID = Int(info.buildID)
         libraryCapsule = info.libraryCapsule; libraryHero = info.libraryHero; headerImage = info.headerImage
         parentID = info.parentID.map(Int.init)
+        installSizeEstimate = info.installSizeEstimate(for: "windows")
+        downloadSizeEstimate = info.downloadSizeEstimate(for: "windows")
         launches = info.launches
     }
 
@@ -236,8 +242,9 @@ final class SteamOwnedLibrary: ObservableObject {
     }
     private static var cacheURL: URL { supportFolder.appendingPathComponent("steam-library.json") }
     private static var playtimeURL: URL { supportFolder.appendingPathComponent("steam-playtime.json") }
-    // Version 3 refreshes lists that excluded games with non-English-only depots.
-    private static let cacheVersion = 3
+    // Version 4 adds depot size estimates. Keep version 3's games visible
+    // while a background refresh obtains their sizes.
+    private static let cacheVersion = 4
     private struct Cache: Codable { var version: Int; var updated: Date; var account: String; var games: [SteamOwnedGame] }
 
     // MARK: Lifecycle
@@ -286,8 +293,10 @@ final class SteamOwnedLibrary: ObservableObject {
         let account = Self.accountKey(SteamSignIn.accountName)
         cachedAccount = account
         if let data = try? Data(contentsOf: Self.cacheURL), data.count <= 64 << 20,
-           let cache = try? JSONDecoder().decode(Cache.self, from: data), cache.version == Self.cacheVersion, cache.account == account {
-            owned = cache.games; libraryUpdated = cache.updated
+           let cache = try? JSONDecoder().decode(Cache.self, from: data),
+           (cache.version == Self.cacheVersion || cache.version == 3), cache.account == account {
+            owned = cache.games
+            libraryUpdated = cache.version == Self.cacheVersion ? cache.updated : .distantPast
         }
         if !owned.isEmpty, let data = try? Data(contentsOf: Self.playtimeURL), data.count <= 16 << 20,
            let cached = try? JSONDecoder().decode([Int: SteamPlaytime].self, from: data) {
