@@ -2,7 +2,7 @@
 
 이 공개 포크는 `willfaust/Madeira`의 `v0.1.3`에서 시작했다. `main`은 공식 소스를 따라가고, `personal`은 개인 변경을 보관한다. 평소 수정은 `personal`에서 진행한다.
 
-게임별 기록: [Mirror's Edge](MIRRORS_EDGE.md), [Elf Girl Pinball](ELF_GIRL_PINBALL.md).
+게임별 기록: [호환성 확인표](GAME_COMPATIBILITY.md), [Mirror's Edge](MIRRORS_EDGE.md), [Elf Girl Pinball](ELF_GIRL_PINBALL.md).
 
 ## 공식 앱과 함께 설치
 
