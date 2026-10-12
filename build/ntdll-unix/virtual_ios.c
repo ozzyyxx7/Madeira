@@ -19454,7 +19454,17 @@ void virtual_set_large_address_space(void)
     {
         if (!wow)
         {
+#ifdef WINE_IOS
+            /* The host cannot map below its 4 GB __PAGEZERO.  Resetting this
+             * to Wine's 0x10000 DOS floor makes every later allocation scan
+             * that entire impossible range.  Steam's worker stacks each made
+             * tens of thousands of failed mmap attempts while a new i386
+             * game process waited on virtual_mutex.  WoW guest ceilings are
+             * translated to their reserved host window separately. */
+            address_space_start = (void *)0x100010000;
+#else
             address_space_start = (void *)0x10000;
+#endif
 #ifndef __APPLE__  /* don't free the zerofill section on macOS */
             if ((main_image_info.DllCharacteristics & IMAGE_DLLCHARACTERISTICS_HIGH_ENTROPY_VA) &&
                 (main_image_info.DllCharacteristics & IMAGE_DLLCHARACTERISTICS_DYNAMIC_BASE))
@@ -24523,17 +24533,23 @@ NTSTATUS WINAPI NtReadVirtualMemory( HANDLE process, const void *addr, void *buf
     }
     else if (process == GetCurrentProcess())
     {
-        __TRY
-        {
-            memmove( buffer, addr, size );
+        mach_vm_size_t copied = 0;
+
+        /* A native memmove fault arrives on the Mach exception thread, outside
+         * the guest TEB's stack.  Wine's __TRY cannot catch it there: walking a
+         * crash dump after a guest exception used to terminate the process a
+         * second time when the source was an uncommitted WoW64 page.  Ask the
+         * kernel to copy instead so an unreadable source is a normal NT error. */
+        if (!size) status = STATUS_SUCCESS;
+        else if (mach_vm_read_overwrite( mach_task_self(), (mach_vm_address_t)addr,
+                                         size, (mach_vm_address_t)buffer, &copied ) == KERN_SUCCESS
+                 && copied == size)
             status = STATUS_SUCCESS;
-        }
-        __EXCEPT
+        else
         {
             status = STATUS_PARTIAL_COPY;
             size = 0;
         }
-        __ENDTRY
     }
     else
     {

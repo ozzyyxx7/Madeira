@@ -4,7 +4,7 @@
 
 ## 공식 앱과 함께 설치
 
-`personal` 브랜치의 iOS 앱 이름은 **Madeira Dev**이고, 번들 ID는 `com.ozzyyxx7.madeira.personal`이다. JIT Helper는 이 ID 아래의 별도 확장으로 빌드된다. 단축어가 앱으로 돌아오는 URL scheme도 `madeira-ozzyyxx7`로 분리했다. 공식 앱과 설치 공간 및 게임 데이터가 분리되므로, 별도로 옮기지 않은 게임과 설정은 새 개인 빌드에 나타나지 않는다.
+`personal` 브랜치의 iOS 앱 이름은 **Madeira Dev**이고, 기본 번들 ID는 `com.ozzyyxx7.madeira.personal`이다. 이 iPad에 실제 설치해 테스트한 앱은 서명 시 `MADEIRA_BUNDLE_IDENTIFIER=com.ozzyyxx7.madeira.personal.2VVL5732XF`를 지정했다. 덮어 설치할 때는 **이 전체 ID**를 다시 사용해야 데이터가 유지된다. JIT Helper는 이 ID 아래의 별도 확장으로 빌드된다. 단축어가 앱으로 돌아오는 URL scheme도 `madeira-ozzyyxx7`로 분리했다. 공식 앱과 설치 공간 및 게임 데이터가 분리되므로, 별도로 옮기지 않은 게임과 설정은 새 개인 빌드에 나타나지 않는다.
 
 이 iPad Air에는 공식 앱에서 `madeira.cfg`, 컨트롤·입력·라이브러리 JSON, 표시 설정을 **한 번 복사**했다. 기존 기기 페어링 파일도 Madeira Dev가 자체 Keychain으로 가져온 것을 로그에서 확인했다. 공식 앱과 개인 앱의 저장 공간은 계속 분리되어 있으므로 이후 설정 변경은 자동으로 동기화되지 않는다. 새 Madeira Dev IPA를 같은 번들 ID와 Apple 팀으로 덮어 설치하면 개인 앱의 설정은 유지된다. Steam 로그인 토큰은 앱별 Keychain에 있어서 개인 앱에서 다시 로그인해야 한다. 페어링 파일과 토큰은 Git에 넣지 않는다.
 
@@ -69,6 +69,8 @@ Memory+는 앱 소스의 entitlement 선언만으로 켜지지 않는다. 설치
 `dockhost.exe`가 없으면 앱은 Madeira Dock 메뉴를 숨긴다. IPA를 만들기 전에 `build/madeira-dock/build.sh`를 실행하고, 완성된 앱의 `arm64ec-windows/dockhost.exe`가 실제로 포함됐는지 확인한다.
 
 ## 32비트 게임과 번들 누락 검사
+
+미러스 엣지 테스트의 수정 이력, 현재 충돌 지점, 공식 앱 비교 및 이후 재조사 순서는 [`MIRRORS_EDGE.md`](MIRRORS_EDGE.md)에 따로 기록했다. 현재 게임은 실행되지 않으며, 이 문서의 번들 검사는 게임 호환성 판정이 아니다.
 
 미러스 엣지처럼 32비트 게임을 실행하려면 `app/Madeira/i386-windows/`가 실제 Wine DLL들로 채워져 있어야 한다. 이 폴더의 바이너리는 Git에서 제외되며, 깨끗한 체크아웃에는 `.gitkeep`만 있다. Xcode는 빈 폴더여도 빌드에 성공하므로, 빌드 전에 `build/wine-i386/build.sh`를 실행하고 적어도 `ntdll.dll`, `kernel32.dll`, `d3d9.dll`이 있는지 확인한다. 2026-10-12 이 Mac에서는 공식 0.1.3 IPA의 i386 파일 729개를 현재 빌드에 복원했다. 소스에서 다시 만들려면 [`WOW64.md`](WOW64.md)의 빌드 순서를 따른다.
 

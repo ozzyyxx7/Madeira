@@ -187,8 +187,12 @@ func window(_ image: String, _ w: Int, _ h: Int, visible: Bool = true, drawn: Bo
         require(S.decide([setup, game], rendered: false, places: places, early: early).scene == .game, "the game's window still wins")
         require(S.decide([setup], rendered: false, places: places).scene == .game,
                 "the same program's window after the host started is the game's")
-        require(S.decide([window("c:\\windows\\system32\\msiexec.exe", 326, 140)], rendered: false, places: places, early: []).scene == .waiting,
-                "Windows-folder programs never reveal, before or after")
+        let installerHelper = window("c:\\windows\\system32\\msiexec.exe", 506, 392)
+        require(S.decide([installerHelper], rendered: false, places: places, early: [installerHelper.hwnd]).scene == .steamWindow,
+                "a Windows Installer dialog from an early helper reveals the desktop")
+        require(S.decide([installerHelper], rendered: false, places: places, early: []).scene == .waiting &&
+                S.decide([installerHelper], rendered: false, places: places, early: [installerHelper.hwnd], installerReveal: false).scene == .waiting,
+                "a later helper or disabled installer reveal keeps the desktop covered")
 
         // --- When the starting screen hides or shows the desktop.
         var hold = SteamLaunchHold(autoReveal: true)

@@ -16,7 +16,8 @@ import SwiftUI
 // top-level window, with its executable path) and is decided by WHERE that program
 // lives on drive C, never by its name:
 //   - C:\windows\ holds Wine's own programs (shell, services, console hosts,
-//     msiexec) and the Dock host: never the game;
+//     msiexec) and the Dock host: never the game, though an installer helper's
+//     dialog can need the user before the host starts;
 //   - the Steam client's folder, outside its steamapps library, holds Valve's
 //     client programs: a dialog of theirs may need the user;
 //   - any other program is the game (or its own launcher) once the Dock host has
@@ -113,9 +114,12 @@ enum SteamLaunchScene: Equatable {
             case .unknown where !installer && gameSized && rendered: return (.game, window)
             case .client where steam == nil && window.drawn && dialogSized:
                 steam = window
-            // A one-time installer that fails can show an error box and wait for OK, and
-            // the start waits for it. MADEIRA_DOCK_INSTALLER_REVEAL=0 keeps them hidden.
+            // An installer's own executable or its Windows helper (such as the
+            // Windows Installer service) can show a dialog and wait for the user.
+            // Both are early windows, never the game's window.
             case .other where installer && steam == nil && window.drawn && dialogSized && installerReveal:
+                steam = window
+            case .helper where installer && steam == nil && window.drawn && dialogSized && installerReveal:
                 steam = window
             default: break
             }

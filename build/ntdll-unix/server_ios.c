@@ -3241,7 +3241,9 @@ NTSTATUS unixcall_wine_server_handle_to_fd( void *args )
 int server_pipe( int fd[2] )
 {
     int ret;
-#ifdef HAVE_PIPE2
+    /* The first pipe2() call faults on iPadOS 26.3 in a signed Madeira Dev
+     * build.  The portable pipe() path below still adds close-on-exec on iOS. */
+#if defined(HAVE_PIPE2) && !defined(WINE_IOS)
     static BOOL have_pipe2 = TRUE;
 
     if (have_pipe2)
