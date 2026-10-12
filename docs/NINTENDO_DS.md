@@ -24,9 +24,8 @@ describes their names. Madeira does not ship ROMs or Nintendo firmware. This
 first integration accepts `.nds` cartridges; DSi software and save states are
 not yet exposed in the UI.
 
-Games designed to be held like a book currently appear sideways on a landscape
-iPad. Rotate the device for a portrait layout; an in-app screen rotation control
-is not yet available.
+Games designed to be held like a book currently appear sideways. An in-app
+screen rotation control is not yet available.
 
 ## Device verification
 
