@@ -96,6 +96,11 @@ How motion reaches the program depends on the program's cursor:
   `ABSOLUTE`). The wineserver adds it to its own cursor and raw input receives
   the delta before any `ClipCursor` clamping, so mouse-look never stalls at a
   screen edge.
+- **A desktop game shows its menu cursor while the iPad pointer is locked:**
+  GCMouse deltas move a virtual desktop position, clamped to the guest display,
+  and that position is posted as an absolute move. When the game hides its
+  cursor again, the route returns to relative mouse-look without releasing the
+  iPad pointer or losing the mouse stream.
 
 Buttons are left, right, middle and the two side buttons
 (`XBUTTON1`/`XBUTTON2`); continuous scrolling is summed into wheel notches of
@@ -146,13 +151,20 @@ buttons. iPadOS honours it only while Madeira is full screen, and only on the
 GCMouse path (on the UIKit path locking would stop pointer delivery, so it is
 refused). iPhone has no lockable pointer and shows no lock control.
 
-- **Automatic:** while a program on the game view hides its cursor (for half a
-  second, so a program about to show one does not lock), the pointer is over
-  the game view and the mouse is moving, the pointer is locked, as a PC game
-  captures the mouse. The lock is released as soon as the program shows a
-  cursor, when the program loses focus, and when the program stops draining
-  the mouse (no report for 2 s while the mouse moves, e.g. it exited).
-  `MADEIRA_POINTER_AUTOLOCK=0` turns this off.
+- **Automatic, direct game view:** while a program hides its cursor (for half
+  a second, so a program about to show one does not lock), the pointer is over
+  the game view and the mouse is moving, the pointer is locked. The lock is
+  released when the program shows a cursor, loses focus, or stops draining the
+  mouse (no report for 2 s while the mouse moves, e.g. it exited).
+- **Automatic, virtual desktop:** mouse-look acquires the lock when the game
+  hides its cursor. A visible game menu keeps the lock and uses the virtual
+  absolute route above; this keeps the iPadOS pointer out of the letterbox.
+  `MADEIRA_POINTER_AUTOLOCK=0` turns automatic locking off in both modes.
+- While locked, a priority UIKit Escape key command consumes the system's
+  Escape action. GCKeyboard still sends the physical Escape press and release
+  to Wine. Without the command, iPadOS was observed to turn its actual lock
+  off on every Escape press even though the app still requested it; the
+  GCMouse stream stopped after the transition.
 - **By hand:** the lock button in the pointer settings or **Ctrl+Alt+P** on the
   keyboard (P is not sent to the program). Touch keeps working while locked, so
   the button is always a way out. Releasing an automatic lock by hand keeps it
@@ -232,8 +244,9 @@ Device checklist:
   text field of the app focused;
 - the cursor on the game view: visible in a program's menus with its own
   image, hidden in mouse-look, under the pointer on iPad;
-- mouse-look with the automatic lock on iPad in full screen, and its release
-  when the program shows a cursor;
+- mouse-look with the automatic lock on iPad in full screen; for desktop games,
+  press Escape repeatedly and verify that the in-game menu cursor moves, the
+  iPadOS pointer stays hidden, and aim moves again after closing the menu;
 - clicking the app's own buttons with the mouse (the program gets nothing), on
   iPad and on iPhone with AssistiveTouch;
 - the app going to the background with a key and a button held (both released);

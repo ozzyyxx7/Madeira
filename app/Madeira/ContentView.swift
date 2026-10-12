@@ -79,9 +79,33 @@ final class MetalHostView: UIView {
     required init?(coder: NSCoder) { fatalError() }
 }
 
+// A hardware-key command can take Escape before iPadOS handles it. This view
+// deliberately does not implement UIKeyInput, so making it first responder
+// does not raise the software keyboard over a running game.
+private final class GameEscapeResponder: UIView {
+    override var canBecomeFirstResponder: Bool { true }
+
+    override var keyCommands: [UIKeyCommand]? {
+        guard HardwareInput.shared.pointerLocked else { return nil }
+        let escape = UIKeyCommand(input: UIKeyCommand.inputEscape, modifierFlags: [],
+                                  action: #selector(handleEscape(_:)))
+        escape.wantsPriorityOverSystemBehavior = true
+        return [escape]
+    }
+
+    override func point(inside point: CGPoint, with event: UIEvent?) -> Bool { false }
+
+    @objc private func handleEscape(_ command: UIKeyCommand) {
+        // GCKeyboard forwards the same physical press and release to Wine.
+        // Consuming UIKit's key command prevents its default pointer action.
+        HardwareInput.shared.escapeKeyCommandHandled()
+    }
+}
+
 // SwiftUI-hosted placeholder: geometry + touch input only.
 final class MetalBackedView: UIView {
     private static var layerRegistered = false
+    private let escapeResponder = GameEscapeResponder(frame: .zero)
 
     // Hardware keyboard bridge: the view becomes first responder so the iOS
     // software keyboard appears, and each typed character is forwarded to
@@ -94,6 +118,11 @@ final class MetalBackedView: UIView {
         guard let v = keyboardTarget else { return }
         if v.isFirstResponder { v.resignFirstResponder() }
         else { v.becomeFirstResponder() }
+    }
+
+    func claimEscapeResponder() -> Bool {
+        if escapeResponder.superview !== self { addSubview(escapeResponder) }
+        return escapeResponder.isFirstResponder || escapeResponder.becomeFirstResponder()
     }
 
     override init(frame: CGRect) {

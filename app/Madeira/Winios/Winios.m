@@ -35,6 +35,7 @@
 /* The window census struct is shared with Swift through this header;
  * including it here keeps both sides' definitions the same. */
 #include "Winios.h"
+#include "WiniosCursor.h"
 
 /* csops syscall — CS_DEBUGGED is the flag StikDebug JIT rides on. Declared by
  * hand for the same reason JITAllocator.c does: <sys/codesign.h> is not in the
@@ -1734,6 +1735,10 @@ void winios_cursor_set(unsigned int cur_id, int w, int h, int hot_x, int hot_y, 
 }
 
 void winios_cursor_show(int show) {
+    /* The desktop compositor owns the cursor image, but hardware mouse
+     * routing also needs the program's visibility decision so it can switch
+     * between mouse-look and the menu's virtual absolute cursor. */
+    winios_direct_cursor_show(show);
     dispatch_async(dispatch_get_main_queue(), ^{
         if (g_cursor_layer) g_cursor_layer.hidden = !show;
     });

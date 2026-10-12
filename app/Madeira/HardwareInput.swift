@@ -439,6 +439,9 @@ enum PointerRoute: String {
     case relative
     /// The iOS pointer's position on the game view, posted as absolute moves.
     case absolute
+    /// A locked desktop's visible cursor, advanced by raw mouse deltas and
+    /// posted as absolute desktop positions without relying on hover.
+    case virtualAbsolute
 }
 
 enum PointerPolicy {
@@ -945,6 +948,12 @@ final class HardwareInput: ObservableObject {
         startTicker()
     }
 
+    /// UIKit's priority Escape command is independent of GCKeyboard. Keep the
+    /// raw GameController path responsible for the guest key's down/up pair.
+    func escapeKeyCommandHandled() {
+        if diagnostics { log("UIKit Escape command captured while pointer is locked") }
+    }
+
     private func syncKeys() {
         let edges = keysPosted.update(keys.wanted(focused: keyboardFocused))
         for vk in edges.up { winios_post_key(vk, 0) }
@@ -1052,8 +1061,10 @@ final class HardwareInput: ObservableObject {
             if !mouseInUseMirror { mouseInUseMirror = true; wake = true }
         }
         motionLock.unlock()
-        // Post before the main hop: the delta is the thing with a deadline.
+        // Gameplay deltas go straight to Wine. Menus with a locked pointer
+        // integrate the raw deltas into the desktop cursor on the main queue.
         if r == .relative { postMotion(dx, -dy) }
+        else if r == .virtualAbsolute { postVirtualAbsolute(dx, -dy) }
         if first || wake {
             let isFirst = first
             DispatchQueue.main.async { [weak self] in
@@ -1080,6 +1091,28 @@ final class HardwareInput: ObservableObject {
         let d = carry.add(dx, dy, gain: gain)
         motionLock.unlock()
         postRelative(d.dx, d.dy)
+    }
+
+    /// The iPad pointer stays locked while an FPS menu is open. Move Wine's
+    /// visible desktop cursor with GCMouse deltas so it remains usable even
+    /// when UIKit hover has ended at the lock transition.
+    private func postVirtualAbsolute(_ dx: Double, _ dy: Double) {
+        let gain = InputSettings.shared.sensMouse
+        motionLock.lock()
+        let d = carry.add(dx, dy, gain: gain)
+        tickDX += Double(d.dx); tickDY += Double(d.dy)
+        desktopCursorSynced = true
+        motionLock.unlock()
+        guard d.dx != 0 || d.dy != 0 else { return }
+        DispatchQueue.main.async {
+            let cur = MetalBackedView.cursor
+            let desk = Self.desktopSize()
+            let p = DesktopCursor.advance(x: Double(cur.x), y: Double(cur.y), dx: d.dx, dy: d.dy,
+                                          width: desk.w, height: desk.h)
+            MetalBackedView.cursor = CGPoint(x: p.x, y: p.y)
+            winios_pointer(Int32(p.x), Int32(p.y), Self.moveFlag | Self.absoluteFlag, 0)
+        }
+        bumpTicker()
     }
 
     /// Post one integer relative move (RELATIVE: see the header comment).
@@ -1250,19 +1283,23 @@ final class HardwareInput: ObservableObject {
     }
 
     private func updateRoute() {
-        let r = PointerPolicy.route(focused: mouseFocused, hover: hoverSeen, locked: pointerLocked,
-                                    cursorShown: cursorShownForRoute, absoluteAllowed: Self.absoluteEnabled)
+        let ordinary = PointerPolicy.route(focused: mouseFocused, hover: hoverSeen, locked: pointerLocked,
+                                           cursorShown: cursorShownForRoute, absoluteAllowed: Self.absoluteEnabled)
+        let r: PointerRoute = ordinary == .relative && Self.desktopMode && pointerLocked
+            && mousePath == .gcmouse && cursorState.reports != 0 && cursorState.shown != 0
+            ? .virtualAbsolute : ordinary
         if r != currentRoute {
+            let wasVirtual = currentRoute == .virtualAbsolute
             currentRoute = r
             if r != .absolute { lastAbsolute = nil }
             motionLock.lock(); route = r; carry.reset(); motionLock.unlock()
-            if diagnostics { log("pointer route: \(r.rawValue)") }
+            if diagnostics || wasVirtual || r == .virtualAbsolute { log("pointer route: \(r.rawValue)") }
         }
         updateTracking()
     }
 
     /// The driver's position reports are wanted while the drawn cursor follows
-    /// Wine's cursor, and as the automatic lock's sign of a live program.
+    /// Wine's cursor, and as the direct-mode automatic lock's sign of a live program.
     private func updateTracking() {
         guard directCursorLive else { return }
         let on = mouseInUse && (currentRoute == .relative || lastAbsolute == nil)
@@ -1314,12 +1351,26 @@ final class HardwareInput: ObservableObject {
     }
 
     private func updateAutoLock() {
-        guard Self.autoLockEnabled, directCursorLive, Self.pointerLockAvailable, mousePath == .gcmouse else {
+        guard Self.autoLockEnabled, Self.pointerLockAvailable, mousePath == .gcmouse else {
             if pointerLocked && lockedByUs { setPointerLocked(false, byUs: true, why: "automatic lock unavailable") }
             return
         }
         let now = CACurrentMediaTime()
         motionLock.lock(); let lastDelta = lastGCDeltaAt; motionLock.unlock()
+        if Self.desktopMode {
+            // The desktop compositor reports ShowCursor/SetCursor(NULL) through
+            // WiniosCursor. Keep an existing OS lock while menus are visible:
+            // virtualAbsolute moves Wine's cursor without losing mouse focus.
+            // Acquire it when the game next hides the cursor for mouse-look.
+            guard cursorState.reports != 0 else { return }
+            if cursorState.shown == 0 && !pointerLocked && !autoLockSuppressed && cursorHiddenSince != 0
+                        && now - cursorHiddenSince >= AutoLock.hiddenDelay
+                        && pointerOver && baseFocused && now - lastDelta < AutoLock.moving {
+                setPointerLocked(true, byUs: true, why: "desktop program hides cursor")
+            }
+            return
+        }
+        guard directCursorLive else { return }
         let action = AutoLock.decide(
             locked: pointerLocked, lockedByUs: lockedByUs, cursorShown: cursorState.shown != 0,
             hiddenFor: cursorState.reports == 0 || cursorHiddenSince == 0 ? 0 : now - cursorHiddenSince,
@@ -1545,6 +1596,9 @@ final class HardwareInput: ObservableObject {
         guard want != pointerLocked else { return }
         pointerLocked = want
         lockedByUs = want && byUs
+        if want && keyboardFocused {
+            _ = MetalBackedView.keyboardTarget?.claimEscapeResponder()
+        }
         PointerLock.refresh()
         log("pointer lock \(want ? "ON" : "OFF") (\(why)) path=\(mousePath.rawValue)")
         refreshFocus("pointer lock")
