@@ -2,6 +2,8 @@
 
 이 공개 포크는 `willfaust/Madeira`의 `v0.1.3`에서 시작했다. `main`은 공식 소스를 따라가고, `personal`은 개인 변경을 보관한다. 평소 수정은 `personal`에서 진행한다.
 
+게임별 기록: [Mirror's Edge](MIRRORS_EDGE.md), [Elf Girl Pinball](ELF_GIRL_PINBALL.md).
+
 ## 공식 앱과 함께 설치
 
 `personal` 브랜치의 iOS 앱 이름은 **Madeira Dev**이고, 기본 번들 ID는 `com.ozzyyxx7.madeira.personal`이다. 이 iPad에 실제 설치해 테스트한 앱은 서명 시 `MADEIRA_BUNDLE_IDENTIFIER=com.ozzyyxx7.madeira.personal.2VVL5732XF`를 지정했다. 덮어 설치할 때는 **이 전체 ID**를 다시 사용해야 데이터가 유지된다. JIT Helper는 이 ID 아래의 별도 확장으로 빌드된다. 단축어가 앱으로 돌아오는 URL scheme도 `madeira-ozzyyxx7`로 분리했다. 공식 앱과 설치 공간 및 게임 데이터가 분리되므로, 별도로 옮기지 않은 게임과 설정은 새 개인 빌드에 나타나지 않는다.
