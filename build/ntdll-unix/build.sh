@@ -97,9 +97,11 @@ compile_unixlib "$WINE_SRC/dlls/ws2_32/unixlib.c" "ws2_32_unixlib" "ws2_32" \
     -I"$WINE_SRC/dlls/ws2_32"
 compile_unixlib "$WINE_SRC/dlls/bcrypt/gnutls.c" "bcrypt_unixlib" "bcrypt" \
     -I"$WINE_SRC/dlls/bcrypt" -I"$GNUTLS_PREFIX/include" \
+    -DHAVE_GNUTLS_CIPHER_INIT=1 -DSONAME_LIBGNUTLS='"libgnutls.so.30"' \
     -include "$CRYPTO_DIR/ios_gnutls_shim.h"
 compile_unixlib "$WINE_SRC/dlls/secur32/schannel_gnutls.c" "secur32_unixlib" "secur32" \
     -I"$WINE_SRC/dlls/secur32" -I"$GNUTLS_PREFIX/include" \
+    -DSONAME_LIBGNUTLS='"libgnutls.so.30"' \
     -include "$CRYPTO_DIR/ios_gnutls_shim.h"
 # iOS-Madeira ml494 (#61 text wall): dwrite had NO unixlib, so every
 # __wine_unix_call from dwrite.dll failed and get_glyph_bbox never ran —
@@ -112,6 +114,7 @@ compile_unixlib "$BUILD_DIR/dwrite_freetype_ios.c" "dwrite_unixlib" "dwrite" \
     -I"$REPO_ROOT/wine/build-arm64ec/include"
 compile_unixlib "$CRYPTO_DIR/crypt32_unixlib_ios.c" "crypt32_unixlib" "crypt32" \
     -I"$WINE_SRC/dlls/crypt32" -I"$GNUTLS_PREFIX/include" \
+    -DSONAME_LIBGNUTLS='"libgnutls.so.30"' \
     -include "$CRYPTO_DIR/ios_gnutls_shim.h"
 # iOS-Madeira 2026-08-03 (#79 transport): in-process NSI TCP connection
 # tables (nsiproxy.sys is not shipped; PE nsi.dll falls back to this).

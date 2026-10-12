@@ -16,6 +16,35 @@ OBJ_DIR="$BUILD_DIR/obj"
 OUT_LIB="$BUILD_DIR/libdxmt_unix.a"
 
 mkdir -p "$OBJ_DIR"
+DXMT_METAL_STD="${DXMT_METAL_STD:-metal3.1}"
+SHADER_HEADERS="$BUILD_DIR/shader-headers"
+mkdir -p "$SHADER_HEADERS"
+for shader in air_msad air_samplepos air_tessellation; do
+    source="$DXMT_SRC/airconv/shaders/$shader.metal"
+    header="$SHADER_HEADERS/$shader.h"
+    if [ ! -f "$header" ] || [ "$source" -nt "$header" ] || [ "$0" -nt "$header" ]; then
+        shader_source="$source"
+        if [ "$shader" = air_tessellation ]; then
+            # Xcode 27 rejects the old four-argument private Metal atomic builtin.
+            # Patch only the generated build input so the DXMT submodule stays clean.
+            shader_source="$SHADER_HEADERS/air_tessellation-patched.metal"
+            python3 - "$source" "$shader_source" <<'PY'
+import pathlib
+import sys
+
+old = "__metal_atomic_fetch_add_explicit(out_count, 1, int(memory_order_relaxed), __METAL_MEMORY_SCOPE_THREADGROUP__)"
+new = "atomic_fetch_add_explicit(reinterpret_cast<threadgroup atomic_int *>(out_count), 1, memory_order_relaxed)"
+source = pathlib.Path(sys.argv[1]).read_text()
+if source.count(old) != 1:
+    raise SystemExit("Unexpected air_tessellation.metal atomic builtin; update the Xcode compatibility patch")
+pathlib.Path(sys.argv[2]).write_text(source.replace(old, new))
+PY
+        fi
+        xcrun -sdk macosx metal -std="$DXMT_METAL_STD" --target=air64-apple-macos14.0 \
+            -o "$SHADER_HEADERS/$shader.air" -c "$shader_source"
+        (cd "$SHADER_HEADERS" && xxd -n "$shader" -i "$shader.air" "$shader.h")
+    fi
+done
 
 COMMON_FLAGS="-arch arm64 -isysroot $SDK -miphoneos-version-min=18.0 -fblocks -O2"
 INCLUDES="-I$DXMT_ROOT/include -I$DXMT_ROOT/libs -I$DXMT_SRC/winemetal -I$DXMT_SRC/airconv"
@@ -215,7 +244,6 @@ echo "=== MADEIRA: dxmt_madeira_native -- internal command library ==="
 # DXMT's meson build (the container format must also be one the OS reads). The
 # script's own timestamp is part of
 # the cache check so that a flag change here regenerates the header.
-DXMT_METAL_STD="${DXMT_METAL_STD:-metal3.1}"
 if [ ! -f "$BUILD_DIR/shader-headers/dxmt_command.h" ] \
    || [ "$DXMT_SRC/dxmt/dxmt_command.metal" -nt "$BUILD_DIR/shader-headers/dxmt_command.h" ] \
    || [ "$0" -nt "$BUILD_DIR/shader-headers/dxmt_command.h" ]; then

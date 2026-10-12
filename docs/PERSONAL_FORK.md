@@ -40,6 +40,29 @@ git push origin personal
 
 공식 코드만 담는 `main`은 별도로 `git switch main && git pull --ff-only upstream main && git push origin main`으로 동기화한다. `personal`을 공식 코드로 덮어쓰지 않는다.
 
+## FEX 서브모듈
+
+`personal`은 `FEX` 서브모듈을 공개 포크 `ozzyyxx7/FEX`의 `personal-ios` 브랜치 커밋으로 고정한다. FEX 소스를 수정할 때는 `FEX` 안에서 커밋하고 그 브랜치를 먼저 푸시한 다음, 상위 Madeira 저장소에서 변경된 서브모듈 포인터를 커밋한다. FEX의 공식 원격 저장소는 서브모듈 안의 `upstream`이다. 새 공식 Madeira 릴리스를 병합할 때 FEX 포인터 충돌이 나면 공식 변경을 FEX 포크에 먼저 통합하고 상위 저장소 포인터를 새 커밋으로 갱신한다.
+
 ## 빌드 준비 상태
 
-서브모듈은 내려받았지만, 깨끗한 체크아웃만으로는 아직 앱이 빌드되지 않는다. [`BUILDING.md`](BUILDING.md)의 외부 입력, llvm-mingw, iOS용 LLVM, 누락된 정적 라이브러리, Microsoft VC 런타임이 필요하다. 일부 공식 빌드 절차도 새 Mac에서 재검증되지 않았다. Xcode 약관 동의와 빌드 도구 설치가 끝나면 해당 문서를 따라 Debug 구성으로 빌드한다. Release 구성은 공식 문서상 게임 실행 중 충돌할 수 있다.
+이 Mac에는 Xcode 27과 Metal Toolchain, Homebrew 빌드 도구, Rust iOS 타깃, llvm-mingw, iOS용 LLVM, FFmpeg, GnuTLS, FreeType, Wine/FEX/DXMT 정적 라이브러리, Microsoft VC 런타임을 준비했다. 이 중 `toolchains/`, 컴파일 결과물, VC DLL은 공개 Git 저장소에 들어가지 않는다. 깨끗한 새 체크아웃이나 다른 Mac에서는 [`BUILDING.md`](BUILDING.md)에 따라 다시 마련해야 한다. 기기별 페어링 파일과 Apple 서명 정보도 Git에 넣지 않는다.
+
+현재 Mac에서 서명 없는 Debug 빌드를 확인할 때 사용한 명령:
+
+```sh
+git switch personal
+git submodule update --init --recursive
+bash build/stage-licenses.sh
+xcodebuild -project app/Madeira.xcodeproj -scheme Madeira \
+  -configuration Debug -destination 'generic/platform=iOS' \
+  CODE_SIGNING_ALLOWED=NO build
+```
+
+기기에 설치할 때는 개인 Apple 팀으로 서명해야 한다. Release 구성은 공식 빌드 문서에 게임 실행 중 충돌 가능성이 기록되어 있으므로 Debug를 사용한다. 앱 번들 ID와 JIT Helper ID가 개인용으로 분리되어 있어 공식 Madeira와 동시 설치할 수 있다.
+
+개인 브랜치의 `build/fex-ios/build.sh`는 iOS용 CMake toolchain과 내장 의존성을 사용하며, `build/wineserver/build.sh`는 기본 정적 아카이브가 없으면 소스에서 만든다. Wine 빌드 전에 `wine/build-macos`와 `wine/build-arm64ec`를 구성하고 필요한 IDL 헤더를 생성해야 한다.
+
+`build/dxmt-ios/build.sh`는 Xcode 27에서 Metal 셰이더를 빌드하기 위해 생성 입력에 호환 수정을 적용한다. DXMT 소스 서브모듈은 수정하지 않는다. 이 스크립트로 `libdxmt_unix.a`를 만든 뒤 [`build/dxmt-ios/README.md`](../build/dxmt-ios/README.md)의 `libtool` 명령으로 `libdxmt_combined.a`를 생성해야 한다.
+
+FEX의 iOS 호스트 정적 라이브러리는 이 Mac에서 빌드됐다. ARM64EC `xtajit64.dll` 재빌드는 현재 llvm-mingw의 C++ 런타임 심볼 링크 오류로 완료되지 않았다. 앱 프로젝트에는 기존에 보관된 DLL이 있으므로 이 DLL의 재빌드 문제는 별도 작업이다.
