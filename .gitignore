@@ -24,6 +24,7 @@ app/build/
 app/DerivedData/
 build/DerivedData/
 build/xcode-derived/
+build/xcode-derived-*/
 FEX/build-ios/
 build/ntdll-unix/obj/
 build/wineserver/obj/
@@ -33,6 +34,9 @@ app/Madeira/libntdll_unix.a
 app/Madeira/libwineserver.a
 app/libwineserver.a
 app/Madeira/libdxmt_combined.a
+app/Madeira/NintendoDS/melondsds_libretro.dylib
+build/melonds-ds/source/
+build/melonds-ds/ios-build/
 app/Madeira/libwin32u_unix.a
 app/libwin32u_unix.a
 # On-device pairing (build/rppairing-ios/build.sh)

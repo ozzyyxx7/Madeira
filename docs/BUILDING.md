@@ -61,6 +61,11 @@ git-ignored and consumed by the app project.
    (ignored; the app links it) and the bundled crate notices
    `app/Madeira/legal/LICENSES-rppairing-crates.txt` (tracked). `cargo test`
    in that folder runs its host tests. Verified on the development machine.
+4c. Nintendo DS: `build/melonds-ds/build.sh` fetches melonDS DS `v1.4.0`
+   (commit `f394adbacb5722ee97c1b37c8064da9a25818310`) and builds the
+   iOS ARM64 libretro dylib into `app/Madeira/NintendoDS/`. It is embedded and
+   signed by the app target; see [`NINTENDO_DS.md`](NINTENDO_DS.md). The core
+   was built and the Madeira Debug target compiled on the development Mac.
 5. Native D3D12 runtime: `build/madeira-d3d12/build-pe.sh` -> `d3d12.dll`, `madeira_d3d12.dll` and the test executables in `app/Madeira/arm64ec-windows/` (tracked). Verified this session. `build/madeira-d3d12/fetch-converter.sh` re-verifies the converter library; `build/stage-licenses.sh` refreshes the bundled licence copies (the Xcode build fails if they are stale).
 6. App: `xcodebuild -project app/Madeira.xcodeproj -scheme Madeira -destination 'generic/platform=iOS' -allowProvisioningUpdates build` (Debug is the configuration that runs the games; Release builds have crashed the guest), then zip `Payload/Madeira.app` into an IPA and sideload. Verified this session on the development machine.
 7. WoW64 (32-bit programs, optional): `build/wine-i386/build.sh` (i386 Wine farm

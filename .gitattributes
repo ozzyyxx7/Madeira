@@ -1,1 +1,3 @@
 app/Frameworks/StikJIT.xcframework/** -whitespace
+app/Madeira/Assets.xcassets/DSDualScreen.imageset/DSDualScreen.pdf -whitespace
+app/Madeira/NintendoDS/libretro.h -whitespace
