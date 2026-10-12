@@ -12,7 +12,7 @@ no device runs.
    shortcut only when it does not answer and the shortcut is turned on; "start" asks for
    the cellular step only when Madeira sees cellular data without Wi-Fi, and "done" undoes
    only what "start" changed; the restore runs after the debugger detached and before
-   Wine starts; the app hands madeira://jit-network/... to the shortcut; Settings has the
+   Wine starts; the app hands its own jit-network callback URL to the shortcut; Settings has the
    switch.
 """
 from pathlib import Path

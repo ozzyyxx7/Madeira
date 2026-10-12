@@ -15,6 +15,7 @@ messages = (app / "JITBuiltInMessages.swift").read_text()
 helper = (root / "app/MadeiraJITHelper/MadeiraJITHelper.swift").read_text()
 content = (app / "ContentView.swift").read_text()
 library = (app / "Library.swift").read_text()
+network = (app / "JITNetwork.swift").read_text()
 
 
 def require(condition, label):
@@ -131,9 +132,10 @@ require(helper_plist["CFBundlePackageType"] == "XPC!" and "EXAppExtensionAttribu
         "the helper is a classic app extension in PlugIns, as LiveContainer's LiveProcess")
 project = (root / "app/Madeira.xcodeproj/project.pbxproj").read_text()
 helper_source = (root / "app/MadeiraJITHelper/MadeiraJITHelper.swift").read_text()
+bundle_ids = re.findall(r"MADEIRA_BUNDLE_IDENTIFIER = ([A-Za-z0-9.]+);", project)
 require(project.count('PRODUCT_BUNDLE_IDENTIFIER = "$(MADEIRA_BUNDLE_IDENTIFIER)";') == 2
         and project.count('PRODUCT_BUNDLE_IDENTIFIER = "$(MADEIRA_BUNDLE_IDENTIFIER).JITHelper";') == 2
-        and project.count("MADEIRA_BUNDLE_IDENTIFIER = com.willfaust.madeora;") == 2
+        and len(bundle_ids) == 2 and len(set(bundle_ids)) == 1
         and "AppExtensionPoint" not in helper_source,
         "one setting, MADEIRA_BUNDLE_IDENTIFIER, names the app and the helper")
 
@@ -152,10 +154,15 @@ body = library_source[library_source.index('struct LibraryView: View {'):]
 body = body[body.index('    var body: some View {'):body.index('    @ToolbarContentBuilder private var libraryToolbar')]
 require('.alert(jitProblem == nil ? "Library" : "Couldn\'t Enable JIT"' in body,
         "the library's error alert is on the tab view, shown on the Settings tab as well")
-require('URL(string: "localdevvpn://enable?scheme=madeira")' in setup
+url_schemes = [scheme for entry in app_plist.get("CFBundleURLTypes", [])
+               for scheme in entry.get("CFBundleURLSchemes", [])]
+require(len(url_schemes) == 1
+        and f'URL(string: "localdevvpn://enable?scheme={url_schemes[0]}")' in setup
         and "localdevvpn" in app_plist["LSApplicationQueriesSchemes"]
-        and any("madeira" in t.get("CFBundleURLSchemes", []) for t in app_plist.get("CFBundleURLTypes", [])),
-        "LocalDevVPN opens to connect and returns to Madeira's own URL scheme")
+        and all(f'"{url_schemes[0]}://jit-network/{outcome}"' in network
+                for outcome in ("success", "error", "cancel"))
+        and f'url.scheme == "{url_schemes[0]}"' in network,
+        "LocalDevVPN and JIT shortcut return to the app's own URL scheme")
 
 # Play without JIT runs Enable JIT, then starts the game, once: only with the debugger
 # attached (so the start cannot ask again), and never after a failure.
