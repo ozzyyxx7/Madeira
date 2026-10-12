@@ -4,7 +4,9 @@
 
 ## 공식 앱과 함께 설치
 
-`personal` 브랜치의 iOS 앱 이름은 **Madeira Dev**이고, 번들 ID는 `com.ozzyyxx7.madeira.personal`이다. JIT Helper는 이 ID 아래의 별도 확장으로 빌드된다. 단축어가 앱으로 돌아오는 URL scheme도 `madeira-ozzyyxx7`로 분리했다. 공식 앱과 설치 공간 및 게임 데이터가 분리되므로, 개인 빌드에서는 Steam 로그인과 게임 설치, JIT 설정을 다시 해야 한다.
+`personal` 브랜치의 iOS 앱 이름은 **Madeira Dev**이고, 번들 ID는 `com.ozzyyxx7.madeira.personal`이다. JIT Helper는 이 ID 아래의 별도 확장으로 빌드된다. 단축어가 앱으로 돌아오는 URL scheme도 `madeira-ozzyyxx7`로 분리했다. 공식 앱과 설치 공간 및 게임 데이터가 분리되므로, 별도로 옮기지 않은 게임과 설정은 새 개인 빌드에 나타나지 않는다.
+
+이 iPad Air에는 공식 앱에서 `madeira.cfg`, 컨트롤·입력·라이브러리 JSON, 표시 설정을 **한 번 복사**했다. 기존 기기 페어링 파일도 Madeira Dev가 자체 Keychain으로 가져온 것을 로그에서 확인했다. 공식 앱과 개인 앱의 저장 공간은 계속 분리되어 있으므로 이후 설정 변경은 자동으로 동기화되지 않는다. 새 Madeira Dev IPA를 같은 번들 ID와 Apple 팀으로 덮어 설치하면 개인 앱의 설정은 유지된다. Steam 로그인 토큰은 앱별 Keychain에 있어서 개인 앱에서 다시 로그인해야 한다. 페어링 파일과 토큰은 Git에 넣지 않는다.
 
 Xcode 프로젝트에 원 개발자의 Development Team을 남기지 않았다. 실제 서명에는 자신의 Apple 계정/팀을 Xcode 또는 사이드로드 도구에서 지정한다. Apple ID, 인증 코드, 기기 pairing plist, 서명 키, 게임 파일과 로그는 공개 저장소에 올리지 않는다.
 
@@ -53,6 +55,7 @@ git push origin personal
 ```sh
 git switch personal
 git submodule update --init --recursive
+bash build/madeira-dock/build.sh
 bash build/stage-licenses.sh
 xcodebuild -project app/Madeira.xcodeproj -scheme Madeira \
   -configuration Debug -destination 'generic/platform=iOS' \
@@ -60,6 +63,25 @@ xcodebuild -project app/Madeira.xcodeproj -scheme Madeira \
 ```
 
 기기에 설치할 때는 개인 Apple 팀으로 서명해야 한다. Release 구성은 공식 빌드 문서에 게임 실행 중 충돌 가능성이 기록되어 있으므로 Debug를 사용한다. 앱 번들 ID와 JIT Helper ID가 개인용으로 분리되어 있어 공식 Madeira와 동시 설치할 수 있다.
+
+Memory+는 앱 소스의 entitlement 선언만으로 켜지지 않는다. 설치된 앱의 개발용 provisioning profile에도 `com.apple.developer.kernel.increased-memory-limit`가 있어야 한다. AltServer가 새 개인 앱 ID를 처음 만들면 이 권한이 빠질 수 있다. 이 Mac의 Xcode에 설치 때 사용한 Apple 계정이 연결되어 있다면, **이미 설치된 개인 앱의 전체 bundle ID**를 `MADEIRA_BUNDLE_IDENTIFIER`에 지정하고 해당 계정의 Personal Team으로 자동 서명 빌드한다. 완성된 `Madeira.app/embedded.mobileprovision`에서 Memory+ 권한과 `get-task-allow`를 확인한 뒤 같은 bundle ID로 덮어 설치한다. 새 bundle ID로 설치하면 앱 데이터와 Steam 로그인을 다시 준비해야 한다.
+
+`dockhost.exe`가 없으면 앱은 Madeira Dock 메뉴를 숨긴다. IPA를 만들기 전에 `build/madeira-dock/build.sh`를 실행하고, 완성된 앱의 `arm64ec-windows/dockhost.exe`가 실제로 포함됐는지 확인한다.
+
+## 32비트 게임과 번들 누락 검사
+
+미러스 엣지처럼 32비트 게임을 실행하려면 `app/Madeira/i386-windows/`가 실제 Wine DLL들로 채워져 있어야 한다. 이 폴더의 바이너리는 Git에서 제외되며, 깨끗한 체크아웃에는 `.gitkeep`만 있다. Xcode는 빈 폴더여도 빌드에 성공하므로, 빌드 전에 `build/wine-i386/build.sh`를 실행하고 적어도 `ntdll.dll`, `kernel32.dll`, `d3d9.dll`이 있는지 확인한다. 2026-10-12 이 Mac에서는 공식 0.1.3 IPA의 i386 파일 729개를 현재 빌드에 복원했다. 소스에서 다시 만들려면 [`WOW64.md`](WOW64.md)의 빌드 순서를 따른다.
+
+```sh
+test -f app/Madeira/i386-windows/ntdll.dll
+test -f app/Madeira/i386-windows/kernel32.dll
+test -f app/Madeira/i386-windows/d3d9.dll
+python3 build/tools/audit-bundle.py /path/to/Madeira-0.1.3.ipa /path/to/Madeira.app
+python3 build/tools/check-pe-imports.py app/Madeira \
+  --objdump toolchains/llvm-mingw-20260421-ucrt-macos-universal/bin/llvm-objdump
+```
+
+첫 Python 명령은 공식 IPA의 앱 파일이 개인 빌드에 빠졌는지 전수 비교한다. 개인 앱의 실행 코드·서명·프레임워크와 재빌드한 라이브러리는 내용이 달라도 목록에만 표시되며, 공식 파일 누락 시 종료 코드 1을 반환한다. 두 번째 명령은 세 Windows 바이너리 폴더의 직접 DLL 참조를 확인한다. 2026-10-12 비교에서 공식 파일 누락과 DLL 참조 누락은 모두 0개였다. 공식 IPA의 `plugplay.exe`, `svchost.exe`, `winedevice.exe`도 로컬 번들에 복원했지만 현재 iOS 실행 경로에서는 사용하지 않는다. 추가로 ARM64EC `bthprops.cpl`이 참조하는 `bluetoothapis.dll`을 Wine 소스에서 빌드해 넣어 ARM64EC DLL 참조 누락을 없앴다.
 
 개인 브랜치의 `build/fex-ios/build.sh`는 iOS용 CMake toolchain과 내장 의존성을 사용하며, `build/wineserver/build.sh`는 기본 정적 아카이브가 없으면 소스에서 만든다. Wine 빌드 전에 `wine/build-macos`와 `wine/build-arm64ec`를 구성하고 필요한 IDL 헤더를 생성해야 한다.
 
