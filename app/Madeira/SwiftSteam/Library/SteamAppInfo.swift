@@ -16,6 +16,8 @@ struct SteamAppInfo {
     var installDir: String = ""
     var oslist: String = ""         // "macos", "windows", "macos,windows", etc.
     var depots: [DepotInfo] = []
+    /// Languages advertised in Steam's `common.supported_languages` metadata.
+    var supportedLanguages: [String] = []
     var buildID: UInt32 = 0
     var freeToDownload = false
     /// Apps owning depots this app installs through `depotfromapp`, so the
@@ -163,12 +165,7 @@ struct SteamAppInfo {
         // content and no English depot). In that case choose one available
         // language rather than treating the game as unavailable on Windows.
         // Keep the requested language whenever Steam actually provides it.
-        let availableLanguages = Set(depots.filter { d in
-            d.supports(os: os) && d.dlcAppID == nil && !d.isSharedInstall &&
-            d.publicManifestID != nil && !d.lowViolence
-        }.map { $0.language.lowercased() }.filter { !$0.isEmpty })
-        let selectedLanguage = availableLanguages.contains(language.lowercased())
-            ? language.lowercased() : availableLanguages.sorted().first
+        let selectedLanguage = selectedDepotLanguage(os: os, requested: language)
         func select(_ arch: String) -> [DepotInfo] {
             depots.filter { d in
                 d.supports(os: os) && d.dlcAppID == nil && !d.isSharedInstall &&
@@ -183,6 +180,26 @@ struct SteamAppInfo {
             return select("32")
         }
         return preferred
+    }
+
+    /// Depot language after Steam's fallback. Include depots whose public
+    /// manifest has to be inherited from another app before downloading.
+    func selectedDepotLanguage(os: String = "windows", requested: String) -> String? {
+        let available = Set(depots.filter { $0.supports(os: os) && $0.dlcAppID == nil && !$0.isSharedInstall && !$0.lowViolence }
+            .map { $0.language.lowercased() }.filter { !$0.isEmpty })
+        if available.contains(requested.lowercased()) { return requested.lowercased() }
+        if available.contains("english") { return "english" }
+        return available.sorted().first
+    }
+
+    /// A common depot may contain several translations; include publisher
+    /// metadata as well as explicitly localized depots in the picker.
+    var gameLanguages: [String] {
+        let depotLanguages = depots.filter { $0.supports(os: "windows") && $0.dlcAppID == nil && !$0.isSharedInstall && !$0.lowViolence }
+            .map { $0.language.lowercased() }.filter { !$0.isEmpty }
+        let published = Set(supportedLanguages + depotLanguages)
+        return Array(published.isEmpty ? Set(["english"]) : published)
+            .sorted { $0 == "english" ? true : ($1 == "english" ? false : $0 < $1) }
     }
 
     /// Every depot with why it was or was not selected, for the install log
@@ -219,8 +236,8 @@ struct SteamAppInfo {
     /// apps since Valve's 2023 PICS change) and falls back to the legacy
     /// `maxsize`. DLC depots and `sharedinstall` redistributables are not part
     /// of the base install and are left out. Treat the figure as "about".
-    func downloadSize(for os: String) -> UInt64 {
-        installDepots(os: os).reduce(0) { total, d in
+    func downloadSize(for os: String, language: String = "english") -> UInt64 {
+        installDepots(os: os, language: language).reduce(0) { total, d in
             let bytes = d.publicDownloadBytes > 0 ? d.publicDownloadBytes : d.maxSize
             guard bytes > 0 else { return total }
             // Sizes are parsed from untrusted PICS VDF strings with no bound:
@@ -234,19 +251,19 @@ struct SteamAppInfo {
     /// whole estimate unavailable rather than showing a misleading partial
     /// total. Shared depots without inherited manifests are resolved when the
     /// download starts, so their sizes cannot be counted in the library list.
-    func installSizeEstimate(for os: String) -> UInt64? {
-        completeSizeEstimate(for: os) { d in
+    func installSizeEstimate(for os: String, language: String = "english") -> UInt64? {
+        completeSizeEstimate(for: os, language: language) { d in
             d.publicSizeBytes > 0 ? d.publicSizeBytes : d.maxSize
         }
     }
 
-    func downloadSizeEstimate(for os: String) -> UInt64? {
+    func downloadSizeEstimate(for os: String, language: String = "english") -> UInt64? {
         // maxsize is an on-disk size, never a compressed download size.
-        completeSizeEstimate(for: os) { $0.publicDownloadBytes }
+        return completeSizeEstimate(for: os, language: language) { $0.publicDownloadBytes }
     }
 
-    private func completeSizeEstimate(for os: String, bytes: (DepotInfo) -> UInt64) -> UInt64? {
-        let selected = installDepots(os: os)
+    private func completeSizeEstimate(for os: String, language: String, bytes: (DepotInfo) -> UInt64) -> UInt64? {
+        let selected = installDepots(os: os, language: language)
         guard !selected.isEmpty else { return nil }
         let selectedLanguages = Set(selected.map { $0.language.lowercased() })
         if depots.contains(where: { d in
@@ -294,6 +311,16 @@ struct SteamAppInfo {
             info.type = AppType(pics: common["type"] as? String ?? "")
             info.oslist = common["oslist"] as? String ?? ""
             info.freeToDownload = (common["freetodownload"] as? String) == "1"
+            if let languages = common["supported_languages"] as? [String: Any] {
+                info.supportedLanguages = languages.compactMap { code, value in
+                    guard code.utf8.count <= 32,
+                          code.range(of: "^[a-zA-Z_]+$", options: .regularExpression) != nil,
+                          let fields = value as? [String: Any] else { return nil }
+                    if let supported = fields["supported"] as? String,
+                       supported == "0" || supported.lowercased() == "false" { return nil }
+                    return code.lowercased()
+                }
+            }
             // Artwork names, English first, else any language.
             func asset(_ node: Any?) -> String? {
                 guard let languages = node as? [String: Any] else { return nil }

@@ -71,6 +71,13 @@ not offered: Dock starts Steam's own launch option. The session keeps Dock's
 starting screen until the game's own window is shown (`docs/MADEIRA_DOCK.md`,
 "Starting screen").
 
+For Korean UI text, the app bundles Nanum Gothic under the SIL Open Font
+License and installs it in each Wine prefix's Windows Fonts directory before
+Wine starts. Wine links it as a fallback for Tahoma and related Windows UI
+faces, which lets games display Hangul without changing their Latin font.
+The font install also runs for existing prefixes after an app update; game
+files and saves are untouched.
+
 **Start with: The game** starts the game's own program in Wine, without Steam
 or Madeira Dock, like a game added to the library. It suits games that run
 without Steam (DRM-free ones); a game that needs Steam or its licence check
@@ -420,9 +427,25 @@ Madeira Dock or as The game).
 ## Not included, and limits
 
 - No Steam Cloud, no achievements, no workshop content, no DLC installation,
-  no branch (beta) selection, no language picker: English when available,
-  otherwise one available language; the public
-  branch.
+  or branch (beta) selection; downloads use the public branch.
+- A game's download sheet and its installed Game details page offer the
+  languages Steam advertises for that game. The choice is saved per game and
+  Steam account. Changing an installed Madeira-managed game queues a content
+  download; the downloader selects that language's depot when available and
+  writes the same Steam language code to the install record. On a Dock launch,
+  while Wine is stopped, Madeira also applies the installed game's language to
+  the Wine Steam and Source registry keys. For a Source game (detected by its
+  `gameinfo.txt`), Dock also passes `-language <code>` to Valve's LaunchApp.
+  Portal's Korean text files and `koreana` appmanifest were insufficient by
+  themselves; registry values alone were also insufficient because Portal reset
+  Source's value to `english` during startup. Games with their own separate
+  in-game language setting may still need that setting changed.
+  On 2026-10-13, Portal (App ID 400) was checked on an iPhone 16 Pro:
+  `-language koreana` reached `hl2.exe`, the Nanum Gothic files and Wine
+  SystemLink entries were present, and the main menu and Options text rendered
+  in Korean rather than square glyphs.
+  Existing files that are no longer in the selected depot are not deleted by
+  an update.
 - A file that a newer build no longer contains is not deleted by an update
   (the install keeps it); **Uninstall** removes the whole folder.
 - Only the account's licenses are read; family sharing and free-on-demand

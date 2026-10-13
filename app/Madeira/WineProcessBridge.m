@@ -389,6 +389,73 @@ static void madeira_ensure_locallow(NSString *prefix)
     ws_log( "[profile] users/%s/AppData/LocalLow %s", name, made ? "created" : "could NOT be created" );
 }
 
+/* iOS's CoreText fonts are intentionally not enumerated by this Wine build:
+ * some system faces crash Wine's FreeType loader. Ship an OFL Hangul face and
+ * install it in the normal Windows font directory before win32u initializes.
+ * Existing prefixes need the same upgrade as newly extracted ones. */
+static void madeira_install_hangul_fonts(NSString *prefix)
+{
+    NSFileManager *fm = [NSFileManager defaultManager];
+    NSString *directory = [prefix stringByAppendingPathComponent:@"drive_c/windows/Fonts"];
+    NSError *error = nil;
+    if (![fm createDirectoryAtPath:directory withIntermediateDirectories:YES attributes:nil error:&error])
+    {
+        LOG("hangul-font: cannot create Fonts directory: %{public}s", error.localizedDescription.UTF8String);
+        return;
+    }
+
+    for (NSString *name in @[@"NanumGothic-Regular.ttf", @"NanumGothic-Bold.ttf"])
+    {
+        NSString *source = [[NSBundle mainBundle].bundlePath stringByAppendingPathComponent:
+            [@"fonts" stringByAppendingPathComponent:name]];
+        NSString *destination = [directory stringByAppendingPathComponent:name];
+        if ([fm fileExistsAtPath:destination]) continue; /* preserve user-installed fonts */
+        error = nil;
+        if (![fm copyItemAtPath:source toPath:destination error:&error])
+            LOG("hangul-font: %{public}s install failed: %{public}s",
+                name.UTF8String, error.localizedDescription.UTF8String);
+        else
+            LOG("hangul-font: installed %{public}s", name.UTF8String);
+    }
+
+    if (![fm fileExistsAtPath:[directory stringByAppendingPathComponent:@"NanumGothic-Regular.ttf"]])
+        return;
+
+    /* Keep Tahoma's Latin metrics. GDI's SystemLink uses the linked face only
+     * for glyphs Tahoma lacks, so this fixes Korean text without changing the
+     * appearance of English UI or replacing a game's own font. */
+    NSString *registry = [prefix stringByAppendingPathComponent:@"system.reg"];
+    NSString *contents = [NSString stringWithContentsOfFile:registry encoding:NSUTF8StringEncoding error:&error];
+    if (!contents) return;
+    NSMutableArray<NSString *> *lines = [[contents componentsSeparatedByString:@"\n"] mutableCopy];
+    NSString *header = @"[Software\\\\Microsoft\\\\Windows NT\\\\CurrentVersion\\\\FontLink\\\\SystemLink]";
+    NSUInteger start = [lines indexOfObjectPassingTest:^BOOL(NSString *line, NSUInteger index, BOOL *stop) {
+        return [line hasPrefix:header];
+    }];
+    if (start == NSNotFound) return;
+
+    BOOL changed = NO;
+    for (NSUInteger i = start + 1; i < lines.count && ![lines[i] hasPrefix:@"["]; i++)
+    {
+        for (NSString *family in @[@"Tahoma", @"Lucida Sans Unicode", @"Microsoft Sans Serif"])
+        {
+            NSString *key = [NSString stringWithFormat:@"\"%@\"=str(7):\"", family];
+            if (![lines[i] hasPrefix:key] || [lines[i] containsString:@"NanumGothic-Regular.ttf"]) continue;
+            lines[i] = [key stringByAppendingFormat:@"NanumGothic-Regular.ttf\\0%@",
+                        [lines[i] substringFromIndex:key.length]];
+            changed = YES;
+            break;
+        }
+    }
+    if (!changed) return;
+    NSData *data = [[lines componentsJoinedByString:@"\n"] dataUsingEncoding:NSUTF8StringEncoding];
+    error = nil;
+    if (![data writeToFile:registry options:NSDataWritingAtomic error:&error])
+        LOG("hangul-font: registry link failed: %{public}s", error.localizedDescription.UTF8String);
+    else
+        LOG("hangul-font: linked Nanum Gothic for Windows UI faces");
+}
+
 /***********************************************************************
  *           madeira_seed_prefix_if_needed
  *
@@ -444,6 +511,7 @@ void madeira_seed_prefix_if_needed(const char *prefix_path) {
         /* ml581: see madeira_undo_appdata_skeleton() above. */
         madeira_undo_appdata_skeleton( prefix );
         madeira_ensure_locallow( prefix );
+        madeira_install_hangul_fonts( prefix );
     }
 }
 

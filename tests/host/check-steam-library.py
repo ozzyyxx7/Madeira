@@ -825,6 +825,30 @@ func packageBuffer(apps: [UInt32], depots: [UInt32]) -> Data {
     require(localized.installableOnWindows && localized.installDepots().map(\.depotID) == [203],
             "a Windows game with only one non-English depot remains installable")
     require(localized.downloadSize(for: "windows") == 5, "the localized fallback is included in download size")
+    let multilingual = SteamAppInfo.parse(appID: 10, from: appVDF(#"""
+    "common" { "name" "Multilingual" "type" "Game" "oslist" "windows"
+      "supported_languages" { "english" { "supported" "true" } "koreana" { "supported" "true" } } }
+    "depots" {
+      "211" { "config" { "oslist" "windows" } "manifests" { "public" { "gid" "2110" "size" "100" "download" "50" } } }
+      "212" { "config" { "oslist" "windows" "language" "english" } "manifests" { "public" { "gid" "2120" "size" "20" "download" "10" } } }
+      "213" { "config" { "oslist" "windows" "language" "koreana" } "manifests" { "public" { "gid" "2130" "size" "30" "download" "15" } } }
+    }
+    """#))!
+    require(multilingual.gameLanguages == ["english", "koreana"] &&
+            multilingual.installDepots(language: "english").map(\.depotID) == [211, 212] &&
+            multilingual.installDepots(language: "koreana").map(\.depotID) == [211, 213] &&
+            multilingual.downloadSizeEstimate(for: "windows", language: "koreana") == 65,
+            "a Korean choice selects the Korean depot and its download estimate")
+    let languageRecords = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    try FileManager.default.createDirectory(at: languageRecords, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: languageRecords) }
+    try AppManifestWriter.writeManifest(appID: 10, name: "Multilingual", installDir: "Multilingual",
+                                        buildID: 1, steamID: 0, steamAppsPath: languageRecords.path,
+                                        language: "koreana")
+    let record = try String(contentsOf: languageRecords.appendingPathComponent("appmanifest_10.acf"), encoding: .utf8)
+    require(record.components(separatedBy: "\"language\"\t\t\"koreana\"").count == 3 &&
+            SteamInstallFiles.language(appID: 10, steamApps: languageRecords) == "koreana",
+            "the game language is written to both Steam manifest blocks and read back")
     let mac = SteamAppInfo.parse(appID: 10, from: appVDF(#""common" { "name" "Mac" "type" "Game" "oslist" "macos" } "depots" { "301" { "config" { "oslist" "macos" } "manifests" { "public" "3001" } } }"#))!
     require(!mac.installableOnWindows, "apps without a Windows build are not offered")
     let tool = SteamAppInfo.parse(appID: 10, from: appVDF(#""common" { "name" "Tool" "type" "Tool" } "depots" { "401" { "manifests" { "public" "4001" } } }"#))!

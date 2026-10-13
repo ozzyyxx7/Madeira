@@ -3164,6 +3164,11 @@ struct ContentView: View {
                 guard let signIn = SteamSignIn.credentialsForDock() else {
                     throw DockError.message("Sign in to Steam in Madeira before starting Dock.")
                 }
+                let steamApps = MadeiraDock.drive.appendingPathComponent(game.library, isDirectory: true)
+                if let language = try SteamLaunchLanguage.apply(appID: game.id, steamApps: steamApps,
+                                                                 prefix: MadeiraDock.prefix) {
+                    logStore.log("[steam-language] launch app=\(game.id) language=\(language)")
+                }
                 try MadeiraDock.writeHandoff(account: signIn.accountName, token: signIn.refreshToken, appID: game.id)
             } catch { fail(error); return }
             MadeiraDock.configure(game)

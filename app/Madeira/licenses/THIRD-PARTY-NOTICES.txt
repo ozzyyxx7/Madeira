@@ -9,7 +9,7 @@ Jfishin's Madeira Steam client and used with his permission; GPL-3.0-or-later
 with the exception, (C) 2026 Jfishin, 125hz.
 
 Madeira Dock (arm64ec-windows/dockhost.exe, when built): GPL-3.0-or-later
-with the exception, (C) 2026 125hz. Source: https://github.com/125hz/madeira-dock
+with the exception, (C) 2026 125hz. Source: https://github.com/ozzyyxx7/madeira-dock
 (the madeira-dock submodule). Its licence and the notices of its
 statically linked LLVM/MinGW-w64 runtime are in arm64ec-windows/dock-notices.txt.
 
@@ -48,6 +48,10 @@ Statically linked into the application binary:
   built by build/ffmpeg/build.sh.
 
 Dynamically loaded at runtime:
+- Nanum Gothic Regular and Bold, bundled for Korean glyph fallback in Wine:
+  (C) 2010 NHN Corporation, SIL Open Font License 1.1
+  (NanumGothic-OFL.txt). Unmodified fonts from
+  https://github.com/google/fonts/tree/main/ofl/nanumgothic.
 - Apple Metal Shader Converter dynamic library: Apple proprietary, under the
   agreement in d3d12/METAL-SHADER-CONVERTER-AGREEMENT.txt (section 2.B:
   distribution solely for shader conversion). Its headers: Apache-2.0

@@ -78,13 +78,13 @@ final class DepotDownloader {
     /// Download an app into `steamApps/common/<installdir>` and write its
     /// appmanifest. Returns the install folder. Throws CancellationError when
     /// the calling task is cancelled; completed chunks stay journaled.
-    func install(_ app: SteamAppInfo, steamApps: URL,
+    func install(_ app: SteamAppInfo, steamApps: URL, language: String = "english",
                  ownedDepots: @escaping () async -> Set<UInt32>? = { nil },
                  progress report: @escaping (SteamDownloadProgress) -> Void) async throws -> URL {
-        let depots = app.installDepots()
+        let depots = app.installDepots(language: language)
         guard !depots.isEmpty else { throw SteamError.depotNotFound(app.appID) }
         // Before the key requests, so a refused depot still has its selection logged.
-        SteamLog.event("[steam-depot] selection app=\(app.appID) build=\(app.buildID) \(app.depotSelectionSummary())")
+        SteamLog.event("[steam-depot] selection app=\(app.appID) build=\(app.buildID) language=\(language) \(app.depotSelectionSummary(language: language))")
 
         let folderName = SteamInstallFiles.safeFolderName(app.installDir.isEmpty ? "app_\(app.appID)" : app.installDir)
         let installURL = steamApps.appendingPathComponent("common", isDirectory: true)
@@ -232,7 +232,7 @@ final class DepotDownloader {
             steamID: accountID, sizeOnDisk: prepared.totalUncompressed,
             steamAppsPath: steamApps.path, installedDepots: own,
             sharedDepots: shared.map { ($0.depotID, Int(owners[UInt32($0.depotID)]!)) },
-            customExecutables: custom)
+            customExecutables: custom, language: language)
         if !shared.isEmpty {
             var written = 0, skipped = 0
             for ownerID in Set(owners.values).sorted() {
@@ -246,7 +246,7 @@ final class DepotDownloader {
                 try AppManifestWriter.mergeOwnerManifest(ownerAppID: ownerID, ownerName: owner.name, ownerBuildID: owner.buildID,
                                                          installDir: folderName,
                                                          steamID: accountID, steamAppsPath: steamApps.path,
-                                                         depots: depots)
+                                                         depots: depots, language: language)
                 written += 1
             }
             SteamLog.event("[steam-shared-record] app=\(app.appID) shared=\(shared.count) owners-written=\(written) owners-skipped=\(skipped)")

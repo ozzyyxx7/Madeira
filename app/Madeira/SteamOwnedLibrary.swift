@@ -36,6 +36,8 @@ struct SteamOwnedGame: Codable, Identifiable, Hashable, Sendable {
     var libraryHero: String?
     var headerImage: String?
     var parentID: Int?
+    /// Steam language codes advertised by this game (nil in older caches).
+    var supportedLanguages: [String]?
     /// Steam's approximate Windows depot sizes; nil when any selected depot
     /// has no published size or still needs a shared owner's metadata.
     var installSizeEstimate: UInt64?
@@ -44,15 +46,16 @@ struct SteamOwnedGame: Codable, Identifiable, Hashable, Sendable {
     /// nil in older caches, which then ask Steam once (SteamOwnedLibrary.launchOptions).
     var launches: [SteamLaunchOption]?
 
-    init(_ info: SteamAppInfo) {
+    init(_ info: SteamAppInfo, language: String = "english") {
         id = Int(info.appID)
         name = info.name
         installDir = info.installDir
         buildID = Int(info.buildID)
         libraryCapsule = info.libraryCapsule; libraryHero = info.libraryHero; headerImage = info.headerImage
         parentID = info.parentID.map(Int.init)
-        installSizeEstimate = info.installSizeEstimate(for: "windows")
-        downloadSizeEstimate = info.downloadSizeEstimate(for: "windows")
+        supportedLanguages = info.gameLanguages
+        installSizeEstimate = info.installSizeEstimate(for: "windows", language: language)
+        downloadSizeEstimate = info.downloadSizeEstimate(for: "windows", language: language)
         launches = info.launches
     }
 
@@ -206,6 +209,7 @@ final class SteamOwnedLibrary: ObservableObject {
         var progress = SteamDownloadProgress()
     }
     @Published private(set) var downloads: [Int: Download] = [:]
+    @Published private(set) var preferredLanguages: [Int: String] = [:]
     private var queue: [Int] = []
     private var active: (id: Int, task: Task<Void, Never>)?
     /// A game session runs: downloads wait, and the Steam connection stays closed.
@@ -242,9 +246,13 @@ final class SteamOwnedLibrary: ObservableObject {
     }
     private static var cacheURL: URL { supportFolder.appendingPathComponent("steam-library.json") }
     private static var playtimeURL: URL { supportFolder.appendingPathComponent("steam-playtime.json") }
-    // Version 4 adds depot size estimates. Keep version 3's games visible
-    // while a background refresh obtains their sizes.
-    private static let cacheVersion = 4
+    private static func languagesURL(account: String) -> URL {
+        supportFolder.appendingPathComponent("steam-languages-\(account).json")
+    }
+    private struct LanguagePreferences: Codable { var account: String; var games: [Int: String] }
+    // Version 5 adds advertised game languages. Older caches remain visible
+    // while a background refresh obtains the language choices.
+    private static let cacheVersion = 5
     private struct Cache: Codable { var version: Int; var updated: Date; var account: String; var games: [SteamOwnedGame] }
 
     // MARK: Lifecycle
@@ -281,10 +289,11 @@ final class SteamOwnedLibrary: ObservableObject {
             for id in Array(downloads.keys) { pause(id) }
             session.logoff()
             clearCaches()
-            owned = []; libraryUpdated = nil; playtime = [:]; downloads = [:]
+            owned = []; libraryUpdated = nil; playtime = [:]; downloads = [:]; preferredLanguages = [:]
             SteamLog.event("[steam-library] signed out: list cleared")
         } else {
             owned = []; libraryUpdated = nil; playtime = [:]
+            loadLanguages()
             Task { await refreshLibrary(interactive: true) }
         }
     }
@@ -292,9 +301,10 @@ final class SteamOwnedLibrary: ObservableObject {
     private func loadCaches() {
         let account = Self.accountKey(SteamSignIn.accountName)
         cachedAccount = account
+        loadLanguages()
         if let data = try? Data(contentsOf: Self.cacheURL), data.count <= 64 << 20,
            let cache = try? JSONDecoder().decode(Cache.self, from: data),
-           (cache.version == Self.cacheVersion || cache.version == 3), cache.account == account {
+           (cache.version == Self.cacheVersion || cache.version == 4 || cache.version == 3), cache.account == account {
             owned = cache.games
             libraryUpdated = cache.version == Self.cacheVersion ? cache.updated : .distantPast
         }
@@ -310,6 +320,42 @@ final class SteamOwnedLibrary: ObservableObject {
         try? FileManager.default.removeItem(at: Self.playtimeURL)
     }
 
+    private func loadLanguages() {
+        let account = Self.accountKey(SteamSignIn.accountName)
+        guard let account, let data = try? Data(contentsOf: Self.languagesURL(account: account)), data.count <= 1 << 20,
+              let saved = try? JSONDecoder().decode(LanguagePreferences.self, from: data),
+              saved.account == account else { preferredLanguages = [:]; return }
+        preferredLanguages = saved.games
+    }
+
+    func language(for appID: Int) -> String {
+        let choices = game(appID)?.supportedLanguages
+        if let preferred = preferredLanguages[appID], choices?.contains(preferred) != false { return preferred }
+        if let installed = SteamInstallFiles.language(appID: appID, steamApps: Self.steamApps)?.lowercased(),
+           choices?.contains(installed) != false { return installed }
+        return choices?.first ?? "english"
+    }
+
+    /// A new selection applies to the next install. An installed game is
+    /// repaired through Steam so its language depot and manifest change together.
+    func setLanguage(_ code: String, appID: Int, installed: Bool) {
+        guard signedIn, let game = game(appID),
+              game.supportedLanguages?.contains(code) == true,
+              downloads[appID] == nil, language(for: appID) != code else { return }
+        preferredLanguages[appID] = code
+        if let index = owned.firstIndex(where: { $0.id == appID }) {
+            owned[index].installSizeEstimate = nil
+            owned[index].downloadSizeEstimate = nil
+        }
+        if let account = Self.accountKey(SteamSignIn.accountName) {
+            try? FileManager.default.createDirectory(at: Self.supportFolder, withIntermediateDirectories: true)
+            try? JSONEncoder().encode(LanguagePreferences(account: account, games: preferredLanguages))
+                .write(to: Self.languagesURL(account: account), options: .atomic)
+        }
+        SteamLog.event("[steam-language] selected app=\(appID) language=\(code)")
+        if installed { install(appID) }
+    }
+
     // MARK: Library
 
     /// `interactive` refreshes (sign-in, the Refresh button) tell the user
@@ -321,7 +367,9 @@ final class SteamOwnedLibrary: ObservableObject {
         defer { refreshing = false }
         do {
             let apps = try await fetcher.fetchOwnedApps()
-            let games = apps.filter(\.installableOnWindows).map(SteamOwnedGame.init)
+            let games = apps.filter(\.installableOnWindows).map {
+                SteamOwnedGame($0, language: preferredLanguages[Int($0.appID)] ?? "english")
+            }
                 .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
             owned = games
             libraryUpdated = Date()
@@ -1059,11 +1107,16 @@ final class SteamOwnedLibrary: ObservableObject {
     private func run(_ appID: Int) async {
         var outcome = SteamDownloadBackground.Outcome.paused
         do {
-            guard let info = try await fetcher.fetchInstallInfo(appID: UInt32(appID)) else {
+            let language = language(for: appID)
+            guard let info = try await fetcher.fetchInstallInfo(appID: UInt32(appID), language: language) else {
                 throw SteamError.appInfoNotFound(UInt32(appID))
             }
+            if let index = owned.firstIndex(where: { $0.id == appID }) {
+                owned[index] = SteamOwnedGame(info, language: language)
+                writeCache()
+            }
             try FileManager.default.createDirectory(at: SteamInstallPaths.common(drive: Self.drive), withIntermediateDirectories: true)
-            let folder = try await downloader.install(info, steamApps: Self.steamApps,
+            let folder = try await downloader.install(info, steamApps: Self.steamApps, language: language,
                                                       ownedDepots: { [weak self] in try? await self?.fetcher.ownedDepotIDs() }) { [weak self] progress in
                 self?.downloads[appID]?.progress = progress
                 SteamDownloadBackground.shared.progress(progress)

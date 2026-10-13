@@ -847,6 +847,23 @@ struct SteamDownloadStatus: View {
 
 // MARK: - Download sheet
 
+private enum SteamLanguageName {
+    static let names: [String: String] = [
+        "english": "English", "koreana": "한국어", "japanese": "日本語",
+        "schinese": "简体中文", "tchinese": "繁體中文", "french": "Français",
+        "german": "Deutsch", "spanish": "Español (España)", "latam": "Español (Latinoamérica)",
+        "italian": "Italiano", "russian": "Русский", "brazilian": "Português (Brasil)",
+        "portuguese": "Português", "polish": "Polski", "turkish": "Türkçe",
+        "ukrainian": "Українська", "dutch": "Nederlands", "swedish": "Svenska",
+        "danish": "Dansk", "norwegian": "Norsk", "finnish": "Suomi",
+        "czech": "Čeština", "hungarian": "Magyar", "greek": "Ελληνικά",
+        "thai": "ไทย", "vietnamese": "Tiếng Việt", "indonesian": "Bahasa Indonesia",
+        "arabic": "العربية", "bulgarian": "Български", "romanian": "Română"
+    ]
+
+    static func title(_ code: String) -> String { names[code] ?? code.capitalized }
+}
+
 /// A game the account owns that is not installed: Install, Pause, Resume and
 /// Cancel of its download. When the download finishes the sheet's button reads
 /// Open, which opens the game's Game details page, where Play starts it.
@@ -893,6 +910,19 @@ struct SteamGameSheet: View {
                                 Text("Downloaded parts are kept. Try again to continue where it stopped.")
                                     .font(.caption).foregroundStyle(.secondary)
                             }
+                        }
+                    }
+                    if let languages = item.owned?.supportedLanguages {
+                        Section("Language") {
+                            Picker("Game language", selection: Binding(
+                                get: { steam.language(for: appID) },
+                                set: { steam.setLanguage($0, appID: appID, installed: false) })) {
+                                ForEach(languages, id: \.self) { code in
+                                    Text(SteamLanguageName.title(code)).tag(code)
+                                }
+                            }.disabled(languages.count < 2 || steam.downloads[appID] != nil)
+                            Text("Choose a language before installing. Only languages listed by Steam for this game are available.")
+                                .font(.caption).foregroundStyle(.secondary)
                         }
                     }
                     Section {
@@ -1229,6 +1259,24 @@ struct SteamEntrySection: View {
                         Text("Run at next start").tag(true)
                         Text("Skip").tag(false)
                     }.pickerStyle(.menu)
+                }
+            }
+            if downloads, let languages = steam.game(appID)?.supportedLanguages {
+                Picker("Game language", selection: Binding(
+                    get: { steam.language(for: appID) },
+                    set: { steam.setLanguage($0, appID: appID, installed: true) })) {
+                    ForEach(languages, id: \.self) { code in
+                        Text(SteamLanguageName.title(code)).tag(code)
+                    }
+                }.pickerStyle(.navigationLink)
+                    .disabled(languages.count < 2 || download != nil || !steam.signedIn)
+                Text("Changing the language downloads any required game files. The game is ready in the new language when the download finishes.")
+                    .font(.caption).foregroundStyle(.secondary)
+                if download == nil,
+                   let applied = SteamInstallFiles.language(appID: appID, steamApps: SteamOwnedLibrary.steamApps),
+                   applied != steam.language(for: appID) {
+                    Text("Installed language: \(SteamLanguageName.title(applied)). Repair to apply the selected language.")
+                        .font(.caption).foregroundStyle(.orange)
                 }
             }
             if let download {

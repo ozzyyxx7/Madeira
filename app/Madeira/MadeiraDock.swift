@@ -398,6 +398,17 @@ enum MadeiraDock {
         setenv("MADEIRA_STEAM_HOST_CLIENT_DIR", SteamRuntimeFiles.windowsRoot, 1)
         setenv("MADEIRA_STEAM_HOST_EXPECTED_INSTALL", game.windowsInstallPath, 1)
         setenv("MADEIRA_STEAM_HOST_LOG", "C:\\madeira-dock.txt", 1)
+        // Source's engine can reset its registry language to English after
+        // startup. Pass its documented -language option through Valve's own
+        // LaunchApp call; other engines receive no extra arguments.
+        let steamApps = drive.appendingPathComponent(game.library, isDirectory: true)
+        if let language = SteamInstallFiles.language(appID: game.id, steamApps: steamApps)?.lowercased(),
+           SteamLaunchLanguage.valid(language), sourceEngine(game) {
+            setenv("MADEIRA_STEAM_HOST_LAUNCH_ARGS", "-language \(language)", 1)
+            SteamLog.event("[dock-launch] source-language=\(language)")
+        } else {
+            unsetenv("MADEIRA_STEAM_HOST_LAUNCH_ARGS")
+        }
         // The install record lists per-user executables: Dock asks Valve's client to prepare
         // them before it launches. env.MADEIRA_DOCK_CEG = 0 never asks.
         if game.customExecutables && SteamSignIn.flag("MADEIRA_DOCK_CEG", default: true) {
@@ -426,6 +437,22 @@ enum MadeiraDock {
         let guardMap = SteamSignIn.flag("MADEIRA_DOCK_IMAGE_MAP_GUARD", default: true)
         if guardMap { setenv("MADEIRA_IMAGE_MAP_GUARD", "1", 1) }
         SteamLog.event("[dock-launch] image-map-guard=\(guardMap ? 1 : 0)")
+    }
+
+    /// A Source install has a gameinfo.txt at its root or in a game folder
+    /// immediately below it (Portal/portal, Half-Life 2/hl2, etc.).
+    private static func sourceEngine(_ game: DockGame) -> Bool {
+        let root = drive.appendingPathComponent(game.library, isDirectory: true)
+            .appendingPathComponent("common", isDirectory: true)
+            .appendingPathComponent(game.installDir, isDirectory: true)
+        let fm = FileManager.default
+        if fm.fileExists(atPath: root.appendingPathComponent("gameinfo.txt").path) { return true }
+        guard let children = try? fm.contentsOfDirectory(at: root, includingPropertiesForKeys: [.isDirectoryKey],
+                                                         options: [.skipsHiddenFiles]) else { return false }
+        return children.prefix(100).contains { child in
+            (try? child.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true &&
+                fm.fileExists(atPath: child.appendingPathComponent("gameinfo.txt").path)
+        }
     }
 
     /// Wine's explorer opens a virtual desktop and starts the host in it. With

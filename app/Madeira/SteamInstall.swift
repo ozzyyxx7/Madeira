@@ -37,6 +37,11 @@ enum SteamInstallFiles {
         return state["buildid"]?.string.flatMap { Int($0) }
     }
 
+    /// Language written by Steam for the installed game, if present.
+    static func language(appID: Int, steamApps: URL) -> String? {
+        record(appID: appID, steamApps: steamApps)?["UserConfig"]?["language"]?.string
+    }
+
     /// The install size the record states (`SizeOnDisk`, bytes), or nil.
     static func sizeOnDisk(appID: Int, steamApps: URL) -> Int64? {
         guard let state = record(appID: appID, steamApps: steamApps),
@@ -108,5 +113,56 @@ enum SteamInstallFiles {
               var parser = try? SteamKeyValues(data), let root = try? parser.read(),
               let state = root["AppState"], state["appid"]?.string == String(appID) else { return nil }
         return state
+    }
+}
+
+/// Valve's Windows client and Source games also read language from the Wine
+/// registry. The install manifest selects content, but does not by itself set
+/// those runtime values in a headless Dock session. Apply the installed game's
+/// language before Wine starts, while its registry is still on disk.
+enum SteamLaunchLanguage {
+    static func valid(_ code: String) -> Bool {
+        !code.isEmpty && code.utf8.count <= 32 && code.utf8.allSatisfy { (97...122).contains($0) }
+    }
+
+    static func apply(appID: Int, steamApps: URL, prefix: URL) throws -> String? {
+        guard let language = SteamInstallFiles.language(appID: appID, steamApps: steamApps)?.lowercased(),
+              valid(language) else { return nil }
+        let file = prefix.appendingPathComponent("user.reg")
+        let old = try String(contentsOf: file, encoding: .utf8)
+        guard old.hasPrefix("WINE REGISTRY Version ") else { return nil }
+        let updated = registry(old, language: language, now: Int(Date().timeIntervalSince1970))
+        if updated != old { try Data(updated.utf8).write(to: file, options: .atomic) }
+        return language
+    }
+
+    /// Preserve unrelated registry values and only update Valve's language
+    /// values. Source's own key is needed for games such as Portal even when
+    /// their Steam appmanifest already says `koreana`.
+    static func registry(_ text: String, language: String, now: Int) -> String {
+        guard valid(language) else { return text }
+        var lines = text.components(separatedBy: "\n")
+        for path in ["Software\\Valve\\Steam", "Software\\Valve\\Source"] {
+            let header = "[" + path.replacingOccurrences(of: "\\", with: "\\\\") + "]"
+            let value = "\"Language\"=\"\(language)\""
+            if let start = lines.firstIndex(where: { $0.caseInsensitiveCompare(header) == .orderedSame ||
+                $0.lowercased().hasPrefix(header.lowercased() + " ") }) {
+                var end = start + 1
+                while end < lines.count, !lines[end].hasPrefix("[") { end += 1 }
+                if let index = (start + 1..<end).first(where: {
+                    $0 < lines.count && lines[$0].lowercased().hasPrefix("\"language\"=")
+                }) {
+                    lines[index] = value
+                } else {
+                    var at = end
+                    while at > start + 1, lines[at - 1].isEmpty { at -= 1 }
+                    lines.insert(value, at: at)
+                }
+            } else {
+                while lines.last == "" { lines.removeLast() }
+                lines += ["", header + " \(now)", value, ""]
+            }
+        }
+        return lines.joined(separator: "\n")
     }
 }
